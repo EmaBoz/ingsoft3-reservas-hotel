@@ -354,3 +354,12 @@ mergear). Decisiones que tomé yo: la estructura de 5 jobs en paralelo (en vez d
 justificación, y verificar personalmente —leyendo cada log y cada respuesta de la API de GitHub,
 no solo confiando en que "ya no tira error"— que el `.gitignore` roto era la causa raíz real y no
 un síntoma de otra cosa, antes de dar el fix por bueno.
+
+### Nota: corrección post-tag
+
+Después de taguear `v4.0.0`, una relectura completa del repositorio encontró dos detalles menores
+(una frase que había quedado en inglés en este archivo, y una referencia a una carpeta que nunca
+existió en el README). Los corregí en un PR aparte (`chore: correcciones de la auditoría final`) y,
+siguiendo la convención del TP1 (§3.7), **moví el tag `v4.0.0`** al commit corregido en vez de
+dejarlo apuntando a la versión con el error — son correcciones de documentación, no cambios de
+comportamiento del sistema.
