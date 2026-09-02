@@ -245,3 +245,112 @@ del límite de trabajo en progreso (y su justificación), qué bug reportar, y e
 historia mal escrita. Yo misma configuré manualmente —vía la web, siguiendo instrucciones exactas—
 las dos cosas que la API no expone (fechas del sprint y límite de la columna), y verifiqué por
 API que quedaron aplicadas correctamente antes de seguir.
+
+---
+
+## TP4 — CI: Pipelines as Code
+
+### Estructura elegida del pipeline
+
+**Cinco jobs en paralelo, uno por Dockerfile** (`build-users-api`, `build-rooms-api`,
+`build-reservations-api`, `build-search-api`, `build-frontend`), en vez de los dos
+(`build-backend`/`build-frontend`) del ejemplo de la guía. La razón es la misma que ya quedó
+documentada en el TP2: mi app es una arquitectura de microservicios con **cuatro** backends
+independientes, cada uno con su propio Dockerfile — así que "un job por Dockerfile" son cinco
+jobs, no dos. Cada job sigue exactamente el mismo patrón (checkout → buildx → build con cache
+scoped al servicio), lo único que cambia es el `context` y el `scope` del cache. Corren en
+paralelo porque no dependen entre sí: son builds independientes, cada uno en su propio runner.
+
+El pipeline **no compila con `go build` ni `npm run build` directamente**: usa el `Dockerfile` de
+cada servicio (`docker/build-push-action`), la misma definición de build del TP2. Esto evita tener
+dos definiciones de "cómo se compila" que puedan divergir — lo que el pipeline verifica es
+exactamente lo que después se despliega, no una compilación paralela e independiente.
+
+### Cache
+
+Cachea las **capas de la imagen Docker** de cada uno de los 5 servicios, con
+`type=gha` (el cache de GitHub Actions) y un **`scope` distinto por servicio**
+(`users-api`, `rooms-api`, `reservations-api`, `search-api`, `frontend`) para que no se pisen
+entre sí. En la segunda corrida sobre el mismo PR, el log mostró las capas reutilizadas:
+
+```
+#11 CACHED
+#12 CACHED
+#13 CACHED
+#14 CACHED
+#15 CACHED
+#16 CACHED
+#17 CACHED
+#18 CACHED
+```
+
+Si el cache desaparece (la plataforma lo puede desalojar en cualquier momento), el pipeline sigue
+funcionando exactamente igual — sólo que cada capa se reconstruye desde cero, más lento. No hay
+ninguna dependencia oculta en que el cache exista: lo comprobé corriendo el pipeline por primera
+vez (sin ningún cache previo) y funcionó igual, sólo que sin ningún `CACHED` en el log.
+
+### El pipeline como gate
+
+`main` exige, además del Pull Request obligatorio del TP1: los **5 checks en verde**
+(`required_status_checks`) y **`strict: true`** (la rama tiene que estar actualizada con `main`
+antes de mergear).
+
+**Demostración completa (PR #14):**
+1. Rompí a propósito el build de `users-api` (import a un paquete inexistente) y abrí el PR.
+2. El pipeline corrió: 4 de los 5 checks pasaron, `build-users-api` falló, y GitHub marcó el PR
+   como bloqueado:
+   ```json
+   {"checks":[{"conclusion":"FAILURE","name":"build-users-api"},
+              {"conclusion":"SUCCESS","name":"build-rooms-api"},
+              {"conclusion":"SUCCESS","name":"build-reservations-api"},
+              {"conclusion":"SUCCESS","name":"build-search-api"},
+              {"conclusion":"SUCCESS","name":"build-frontend"}],
+    "mergeStateStatus":"BLOCKED","mergeable":"MERGEABLE"}
+   ```
+3. Saqué el import roto (`fix: saca el import que no existe`) y agregué además un cambio real
+   (un comentario de documentación), para que el PR tuviera contenido más allá de la rotura y el
+   arreglo.
+4. El pipeline volvió a correr, los 5 checks pasaron, `mergeStateStatus` pasó a `CLEAN`.
+5. Antes de mergear, revisé el diff completo del PR (`gh pr diff`) — el gate verifica que
+   compile, no que el cambio tenga sentido; eso lo reviso yo.
+6. Mergeé el PR #14 (queda en el historial con sus corridas en rojo y en verde).
+
+**Efecto de `strict: true` (PR #15, abierto en paralelo):** con un segundo PR abierto al mismo
+tiempo, después de mergear el #14 el #15 pasó a:
+```json
+{"mergeStateStatus":"BEHIND","mergeable":"MERGEABLE"}
+```
+— es decir, aunque sus checks seguían en verde, GitHub no lo deja mergear porque quedó
+desactualizado respecto de `main`. Actualicé la rama (`Update branch` / `PUT .../update-branch`),
+el pipeline corrió de nuevo sobre la mezcla, y recién ahí lo mergeé.
+
+### Problemas encontrados y cómo los resolví
+
+- **El bug más importante de este TP no fue del pipeline: fue de un `.gitignore` de mi propia
+  app, y lo descubrió el CI.** `services/search-api/.gitignore` tenía una línea `server` (sin
+  barra inicial) para ignorar el binario compilado, pero esa regla también matchea **cualquier
+  directorio** llamado `server` en cualquier profundidad — incluido `cmd/server/`, que es donde
+  vive el código fuente real de `search-api` (`cmd/server/main.go`). Como resultado, ese archivo
+  **nunca había llegado a git**: en mi máquina el build local (TP2) funcionaba porque `docker
+  build` usa el directorio de trabajo tal cual está en el disco, con o sin git de por medio; pero
+  el runner de GitHub Actions clona el repositorio desde cero (`actions/checkout`) y sólo trae lo
+  que está *versionado*. El primer intento de correr el pipeline sobre `search-api` falló con
+  `stat /app/cmd/server: directory not found` — un error que no tenía nada que ver con Docker ni
+  con el workflow, y que sólo salió a la luz porque el CI, a diferencia de mi máquina, parte de
+  una copia limpia. Es la prueba más concreta de por qué "anda en mi máquina" no alcanza. Lo
+  arreglé anclando la regla a la raíz del servicio (`/server`, `/main`) y agregando el archivo
+  recuperado al repositorio.
+- **El `PUT` de `branches/main/protection` reescribe la protección entera.** Cuando agregué
+  `required_status_checks`, tuve que volver a declarar también `required_pull_request_reviews` y
+  `enforce_admins` (configurados en el TP1) en el mismo cuerpo del request — si los omitía, se
+  perdían.
+
+### Declaración de uso de IA
+
+Igual que en los TPs anteriores: usé Claude Code para escribir el workflow, ejecutar los comandos
+de `gh`/`docker`/`git`, diagnosticar el problema del `.gitignore` de `search-api`, y armar la
+demostración completa del gate (romper, verificar bloqueo, arreglar, verificar desbloqueo,
+mergear). Decisiones que tomé yo: la estructura de 5 jobs en paralelo (en vez de 2) y su
+justificación, y verificar personalmente —leyendo cada log y cada respuesta de la API de GitHub,
+no solo confiando en que "ya no tira error"— que el `.gitignore` roto era la causa raíz real y no
+un síntoma de otra cosa, antes de dar el fix por bueno.
