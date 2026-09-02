@@ -175,3 +175,73 @@ cada corrección leyendo el log del error (`curl: not found`, el mensaje de `npm
 confirmando que el fix lo resolvía de verdad, no solo que "dejaba de tirar error" — en los tres
 casos reproduje el problema, entendí la causa raíz, y **después** de corregir volví a levantar el
 sistema completo desde cero para confirmar que las tres cosas seguían funcionando juntas.
+
+---
+
+## TP3 — Planificación y trazabilidad
+
+### Duración del sprint
+
+Elegí **sprints de 1 semana**. Justificación: la cursada entrega un TP por semana (§2 del
+reglamento: "la materia está diseñada para que cada TP tome una semana si venís al día"), así que
+alinear el sprint con esa cadencia hace que "cerrar el sprint" y "cerrar el TP de la semana"
+coincidan — el sprint deja de ser una unidad artificial superpuesta al calendario real de trabajo.
+
+### Límite de trabajo en progreso
+
+Configuré el límite en **2** en la columna *In Progress* del board. La regla de arranque de la
+guía es "cantidad de personas + 1"; trabajando sola, eso da 1 + 1 = 2. El "+1" es la válvula para
+cuando algo queda esperando una revisión o una respuesta y necesito avanzar en otra cosa sin que
+el límite me trabe por completo, pero sigue siendo lo bastante bajo como para forzarme a terminar
+antes de empezar algo nuevo. Señal de que está mal calibrado: si nunca lo alcanzo, está demasiado
+alto; si lo alcanzo constantemente y me bloquea, está demasiado bajo para mi forma real de
+trabajar.
+
+### Diagnóstico de la historia mal escrita
+
+Historia de ejemplo: *"Como desarrollador quiero crear la tabla usuarios para guardar los
+datos."*
+
+**Por qué está mal escrita:** es una **tarea técnica disfrazada de historia de usuario**. El
+formato "Como... quiero... para..." está completo en la superficie, pero el contenido no cumple
+lo que ese formato exige: el "quiero" describe una acción de implementación ("crear una tabla"),
+no una capacidad observable por alguien; y el "para" no es un beneficio de negocio, es la
+justificación técnica de la acción anterior ("guardar los datos" es *cómo* funciona la tabla, no
+*qué* gana un usuario). Nadie "quiere" una tabla — la tabla es un medio, no un fin. Tampoco es
+**Testeable** en el sentido de la guía (§2.3, INVEST): no hay un criterio de aceptación
+verificable *desde afuera del sistema*, sólo "la tabla existe".
+
+**Cómo la reescribiría:** subo un nivel, a la capacidad real que esa tabla hace posible, por
+ejemplo *"Como usuario quiero registrarme con un usuario y una contraseña para poder iniciar
+sesión más adelante"*, con criterios de aceptación como "el registro rechaza un email ya
+existente" o "la contraseña se guarda hasheada, nunca en texto plano". "Crear la tabla usuarios"
+pasa a ser una **tarea** técnica *dentro* de esa historia, no la historia en sí — que es
+exactamente la distinción de niveles de la jerarquía (épica → historia → tarea, §2.2 de la guía).
+
+### Problemas encontrados y cómo los resolví
+
+- **La API pública de GitHub Projects no permite configurar la duración/fechas del campo
+  Iteration ni el límite de trabajo en progreso del tablero Board.** Automaticé todo lo demás por
+  API/CLI (proyecto, visibilidad, labels, issues, jerarquía con sub-issues, agregar los 5 items al
+  proyecto, la vista Board), pero confirmé por introspección del schema de GraphQL que no existe
+  ninguna mutación pública para esas dos configuraciones puntuales — son features exclusivas de la
+  interfaz web. Las completé manualmente desde ahí, siguiendo exactamente los pasos de la guía.
+- **`gh issue edit --add-sub-issue` requiere gh ≥ 2.94** (la guía lo advierte). La versión
+  instalada (2.98.0) ya lo soporta, así que armé la jerarquía completa (épica → historia → 2
+  tareas) sin pasar por la web.
+- **El bug lo tomé de mi propia app**, no del ejemplo del video: durante las pruebas
+  end-to-end del TP2 encontré que la búsqueda de habitaciones devuelve 404 (el frontend llama a
+  `/search-api/api/search/rooms` pero `search-api` expone la ruta real en `/api/search/rooms`, sin
+  ese prefijo). Es un bug real, sobre una versión ya entregada del sistema (TP2), así que encaja
+  exactamente con la definición de la guía de "cuándo algo es un bug y no trabajo pendiente de una
+  historia en curso" (§3.2).
+
+### Declaración de uso de IA
+
+Igual que en los TPs anteriores: usé Claude Code para ejecutar los comandos de `gh` y las
+consultas/mutaciones de GraphQL (crear labels, issues, jerarquía, proyecto, vista Board, campo
+Sprint) siguiendo el enunciado del TP3. Decisiones que tomé yo: la duración del sprint, el número
+del límite de trabajo en progreso (y su justificación), qué bug reportar, y el diagnóstico de la
+historia mal escrita. Yo misma configuré manualmente —vía la web, siguiendo instrucciones exactas—
+las dos cosas que la API no expone (fechas del sprint y límite de la columna), y verifiqué por
+API que quedaron aplicadas correctamente antes de seguir.
