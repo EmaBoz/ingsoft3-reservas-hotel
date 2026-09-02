@@ -1,9 +1,123 @@
 name: CI
 
-on: [pull_request]
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
 
 jobs:
-  build:
+  build-users-api:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Qué estamos verificando
+        env:
+          RAMA: ${{ github.head_ref || github.ref_name }}
+        run: echo "Rama $RAMA · commit $GITHUB_SHA"
+
+      - name: Bajar el código al runner
+        uses: actions/checkout@v6
+
+      - name: Preparar el constructor que sabe cachear
+        uses: docker/setup-buildx-action@v4
+
+      - name: Construir la imagen de users-api
+        uses: docker/build-push-action@v7
+        with:
+          context: ./services/users-api
+          push: false
+          tags: users-api:ci
+          cache-from: type=gha,scope=users-api
+          cache-to: type=gha,mode=max,scope=users-api
+
+  build-rooms-api:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Qué estamos verificando
+        env:
+          RAMA: ${{ github.head_ref || github.ref_name }}
+        run: echo "Rama $RAMA · commit $GITHUB_SHA"
+
+      - name: Bajar el código al runner
+        uses: actions/checkout@v6
+
+      - name: Preparar el constructor que sabe cachear
+        uses: docker/setup-buildx-action@v4
+
+      - name: Construir la imagen de rooms-api
+        uses: docker/build-push-action@v7
+        with:
+          context: ./services/rooms-api
+          push: false
+          tags: rooms-api:ci
+          cache-from: type=gha,scope=rooms-api
+          cache-to: type=gha,mode=max,scope=rooms-api
+
+  build-reservations-api:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Qué estamos verificando
+        env:
+          RAMA: ${{ github.head_ref || github.ref_name }}
+        run: echo "Rama $RAMA · commit $GITHUB_SHA"
+
+      - name: Bajar el código al runner
+        uses: actions/checkout@v6
+
+      - name: Preparar el constructor que sabe cachear
+        uses: docker/setup-buildx-action@v4
+
+      - name: Construir la imagen de reservations-api
+        uses: docker/build-push-action@v7
+        with:
+          context: ./services/reservations-api
+          push: false
+          tags: reservations-api:ci
+          cache-from: type=gha,scope=reservations-api
+          cache-to: type=gha,mode=max,scope=reservations-api
+
+  build-search-api:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Qué estamos verificando
+        env:
+          RAMA: ${{ github.head_ref || github.ref_name }}
+        run: echo "Rama $RAMA · commit $GITHUB_SHA"
+
+      - name: Bajar el código al runner
+        uses: actions/checkout@v6
+
+      - name: Preparar el constructor que sabe cachear
+        uses: docker/setup-buildx-action@v4
+
+      - name: Construir la imagen de search-api
+        uses: docker/build-push-action@v7
+        with:
+          context: ./services/search-api
+          push: false
+          tags: search-api:ci
+          cache-from: type=gha,scope=search-api
+          cache-to: type=gha,mode=max,scope=search-api
+
+  build-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Qué estamos verificando
+        env:
+          RAMA: ${{ github.head_ref || github.ref_name }}
+        run: echo "Rama $RAMA · commit $GITHUB_SHA"
+
+      - name: Bajar el código al runner
+        uses: actions/checkout@v6
+
+      - name: Preparar el constructor que sabe cachear
+        uses: docker/setup-buildx-action@v4
+
+      - name: Construir la imagen del frontend
+        uses: docker/build-push-action@v7
+        with:
+          context: ./frontend
+          push: false
+          tags: frontend:ci
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
