@@ -191,3 +191,4 @@ nunca lo subas al repositorio (ya está en `.gitignore`).
 
 - [`decisiones.md`](decisiones.md) — decisiones técnicas y de diseño, TP a TP.
 - [`evidencias.md`](evidencias.md) — evidencias de cada entrega.
+
