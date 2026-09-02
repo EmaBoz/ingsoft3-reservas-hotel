@@ -1,0 +1,103 @@
+{
+  "add-field": [
+    {
+      "name": "id",
+      "type": "string",
+      "stored": true,
+      "indexed": true,
+      "required": true,
+      "multiValued": false
+    },
+    {
+      "name": "number",
+      "type": "string",
+      "stored": true,
+      "indexed": true,
+      "required": true
+    },
+    {
+      "name": "type",
+      "type": "string",
+      "stored": true,
+      "indexed": true,
+      "required": true
+    },
+    {
+      "name": "status",
+      "type": "string",
+      "stored": true,
+      "indexed": true,
+      "required": true
+    },
+    {
+      "name": "price",
+      "type": "pdouble",
+      "stored": true,
+      "indexed": true,
+      "required": true
+    },
+    {
+      "name": "description",
+      "type": "text_general",
+      "stored": true,
+      "indexed": true,
+      "multiValued": false
+    },
+    {
+      "name": "capacity",
+      "type": "pint",
+      "stored": true,
+      "indexed": true,
+      "required": true
+    },
+    {
+      "name": "floor",
+      "type": "pint",
+      "stored": true,
+      "indexed": true,
+      "required": true
+    },
+    {
+      "name": "has_wifi",
+      "type": "boolean",
+      "stored": true,
+      "indexed": true,
+      "required": true
+    },
+    {
+      "name": "has_ac",
+      "type": "boolean",
+      "stored": true,
+      "indexed": true,
+      "required": true
+    },
+    {
+      "name": "has_tv",
+      "type": "boolean",
+      "stored": true,
+      "indexed": true,
+      "required": true
+    },
+    {
+      "name": "has_minibar",
+      "type": "boolean",
+      "stored": true,
+      "indexed": true,
+      "required": true
+    },
+    {
+      "name": "created_at",
+      "type": "pdate",
+      "stored": true,
+      "indexed": true,
+      "required": true
+    },
+    {
+      "name": "updated_at",
+      "type": "pdate",
+      "stored": true,
+      "indexed": true,
+      "required": true
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+# Binarios
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+users-api
+
+# Test binary
+*.test
+
+# Output
+*.out
+
+# Go workspace file
+go.work
+
+# Vendor
+vendor/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Env files
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db

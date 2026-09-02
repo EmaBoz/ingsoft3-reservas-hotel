@@ -65,3 +65,113 @@ ejecutar este TP, con supervisión y decisión mía en cada paso:
   `CONFLICTING` del PR, el contenido del archivo con los marcadores). Lo declaro acá porque es una
   desviación consciente del formato sugerido por la guía, no un intento de esconder nada — todo el
   proceso es 100% verificable navegando el historial del repositorio.
+
+---
+
+## TP2 — Contenedores
+
+### Qué app elegí y por qué
+
+Elegí mi **Sistema de Reservas de Hotel** (proyecto propio, hecho para la materia Arquitectura de
+Software II): backend en Go organizado como **4 microservicios** (`users-api`, `rooms-api`,
+`reservations-api`, `search-api`), frontend en React + TypeScript + Vite, y persistencia en MySQL
+(×2) + MongoDB, con Solr para búsqueda, Memcached para caché y RabbitMQ para eventos entre
+servicios.
+
+Contra los criterios de la guía (TP2 §3.3 / `elegir-app.md`):
+
+- **¿Buildea y corre localmente hoy?** Sí — la probé completa con `docker compose up -d --build`
+  antes de dar el TP por terminado (ver `evidencias.md`).
+- **¿La entiendo lo suficiente para modificarla?** Sí: la escribí yo. Sé dónde está cada capa
+  (`controllers` → `services` → `repositories` → `domain`) en cada microservicio.
+- **¿Tiene lógica de negocio para testear (TP5)?** Sí: reglas de autorización por rol (JWT
+  admin/usuario), restricciones de estado de habitaciones, validaciones de reservas — hay bastante
+  más que un CRUD plano.
+- **Tamaño:** acá me aparto conscientemente de la recomendación de la guía ("2-3 pantallas,
+  alcanza con CRUD, sin dependencias exóticas"). Elegí **mantener la arquitectura de
+  microservicios completa** (4 backends + Solr + Memcached + RabbitMQ + 2 motores de base de
+  datos) en lugar de recortarla a un solo servicio, porque:
+  1. Es la app que ya tengo construida y entiendo a fondo (developed for another course,
+     but authored personally — not a group project delivered elsewhere).
+  2. Cada pieza (colas, caché, búsqueda) es justamente el tipo de componente que esta materia
+     enseña a operar en producción (TP6 en adelante), así que tenerlas desde ahora es más
+     representativo del "sistema de entrega profesional" que busca la cursada.
+  3. Asumo el costo que la guía advierte: más Dockerfiles, más piezas para explicar en la
+     defensa, compilaciones más lentas. Lo documento acá para que quede claro que es una decisión
+     tomada con el trade-off a la vista, no una casualidad.
+
+### Decisiones de contenerización
+
+- **Imágenes base:** `golang:1.21-alpine` para compilar cada microservicio (coincide con la
+  versión de Go que ya usaban los `go.mod`) y `alpine:latest` para la etapa de runtime — mínima,
+  sin SDK. Para el frontend: `node:22-alpine` para build y `nginx:alpine` para servir los
+  estáticos.
+- **Multi-stage en los 4 backends:** ya venían escritos así en el proyecto original (etapa
+  `builder` con el SDK de Go, etapa final solo con el binario compilado + `ca-certificates`).
+  Verifiqué que la estructura sigue el mismo principio que enseña la guía: SDK que compila,
+  runtime que solo ejecuta.
+- **Frontend con nginx + proxy interno:** el frontend es una SPA que llama a rutas relativas
+  (`/login`, `/users`, `/api/v1/...`, `/api/reservations`, `/search-api/...`) sin host ni puerto
+  hardcodeado — igual que recomienda la guía (TP2 §2.6, opción a). En desarrollo, quien traduce
+  esas rutas es el proxy de Vite (`vite.config.ts`); en el contenedor, es `nginx.conf`, que
+  reenvía cada prefijo al microservicio correspondiente **por nombre de servicio** (`users-api`,
+  `rooms-api`, `reservations-api`, `search-api`) usando variables + `resolver 127.0.0.11` (no
+  hardcodeado), tal como explica la guía, para que el contenedor del frontend no dependa de que
+  los backends ya existan al arrancar.
+- **A diferencia del ejemplo de la guía (un solo backend), acá hay CUATRO**, así que el
+  `nginx.conf` tiene un `location` + `proxy_pass` por servicio en vez de uno solo. Es la misma
+  idea, aplicada las veces que hacen falta.
+- **Qué persiste y qué no:** los datos de MySQL (×2), MongoDB, RabbitMQ y Solr viven en
+  **volúmenes nombrados** (`mysql_users_data`, `mysql_rooms_data`, `mongo_data`, `rabbitmq_data`,
+  `solr_data`) — sobreviven a `docker compose down`. Memcached es intencionalmente efímero (es
+  una caché: perder su contenido no pierde datos, solo obliga a recalcular). Lo verifiqué con la
+  prueba de persistencia real (`evidencias.md`).
+- **Secretos por variable de entorno:** todas las contraseñas (MySQL ×2, Mongo, RabbitMQ, JWT)
+  viven en `.env` (ignorado por git) con `.env.example` commiteado como plantilla — el compose ya
+  traía esto resuelto del proyecto original.
+- **`depends_on` + `healthcheck`:** todos los servicios con base de datos/cola tienen
+  `condition: service_healthy` en lugar de solo esperar a que el contenedor arranque —
+  particularmente importante acá porque `rooms-api` depende de que `search-api` (que a su vez
+  depende de Solr y RabbitMQ) esté *listo*, no solo *arrancado*.
+
+### Problemas encontrados y cómo los resolví
+
+1. **`npm ci` fallaba solo dentro de Docker, nunca en mi máquina.** El Dockerfile del frontend
+   copiaba `package*.json` pero no `.npmrc` (que tiene `legacy-peer-deps=true`) antes de correr
+   `npm ci`. Sin ese archivo, `npm` dentro del contenedor usaba resolución de dependencias
+   "estricta" en vez de "legacy", y encontraba el lockfile (generado en modo legacy) inconsistente
+   — el error mencionaba versiones de `picomatch` que ni siquiera estaban en el lockfile. Lo
+   arreglé agregando `.npmrc` al `COPY` que precede a `npm ci`.
+2. **`search-api` nunca pasaba a "healthy" y bloqueaba a `rooms-api`.** El Dockerfile de
+   `search-api` instalaba `ca-certificates` pero no `curl`, y su healthcheck usa
+   `curl -f http://localhost:8083/health`. Sin `curl`, el healthcheck fallaba siempre
+   (`/bin/sh: curl: not found`), y como `rooms-api` depende de `search-api` con
+   `condition: service_healthy`, todo el `docker compose up` se colgaba esperando algo que nunca
+   iba a pasar. Lo arreglé agregando `curl` al `apk add` de la etapa runtime.
+3. **El mapeo de puerto de `search-api` estaba mal en el compose original** (`"8083:8080"`, pero
+   el proceso escucha en el puerto `8083` adentro del contenedor, no en `8080`). Esto no rompía la
+   comunicación *entre* contenedores (que usa el puerto real, no el mapeo de host), pero sí
+   hubiera roto el acceso desde afuera (`curl localhost:8083/...` desde la máquina). Lo corregí a
+   `"8083:8083"`.
+4. **El lockfile del frontend (`package-lock.json`) estaba desincronizado con `package.json`**
+   (típico cuando se edita `package.json` a mano sin correr `npm install` después). Lo regeneré
+   corriendo `npm install` una vez con Node 22 instalado localmente.
+5. **Detalle que documento pero no corregí:** el frontend llama a
+   `/search-api/api/search/rooms` (con el prefijo `/search-api` incluido en la URL, ver
+   `src/services/SearchServices.ts`), pero la ruta real que expone `search-api` es
+   `/api/search/rooms` (sin ese prefijo). En desarrollo, el proxy de Vite tampoco recorta el
+   prefijo, así que esto ya fallaba antes de dockerizar. Mi `nginx.conf` reproduce el mismo
+   comportamiento (no recorta el prefijo) para no cambiar el comportamiento de la app por mi
+   cuenta — es un bug preexistente de la aplicación, no de la contenerización, y queda fuera del
+   alcance de este TP (que es sobre Docker, no sobre corregir lógica de negocio del frontend).
+
+### Declaración de uso de IA
+
+Igual que en el TP1: usé **Claude Code** para ejecutar los comandos (crear archivos, correr
+`docker build`/`docker compose up`, diagnosticar y corregir los errores de arriba, publicar las
+imágenes) siguiendo el enunciado oficial del TP2. Decisiones que tomé yo: mantener la arquitectura
+de microservicios completa en vez de recortarla, y qué versión de la app usar como base. Verifiqué
+cada corrección leyendo el log del error (`curl: not found`, el mensaje de `npm ci`) y
+confirmando que el fix lo resolvía de verdad, no solo que "dejaba de tirar error" — en los tres
+casos reproduje el problema, entendí la causa raíz, y **después** de corregir volví a levantar el
+sistema completo desde cero para confirmar que las tres cosas seguían funcionando juntas.

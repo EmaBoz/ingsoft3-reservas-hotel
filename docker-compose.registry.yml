@@ -1,0 +1,250 @@
+services:
+  # ===========================
+  # 🔹 MySQL para users-api
+  # ===========================
+  mysql-users:
+    image: mysql:8.0
+    container_name: mysql-users
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_USERS_ROOT_PASSWORD:-root}
+      MYSQL_DATABASE: ${USERS_DB_NAME:-usersdb}
+      MYSQL_USER: ${USERS_DB_USER:-user}
+      MYSQL_PASSWORD: ${USERS_DB_PASSWORD:-userpass}
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_users_data:/var/lib/mysql
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${MYSQL_USERS_ROOT_PASSWORD:-root}" ]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+    restart: unless-stopped
+
+  # ===========================
+  # 🔹 MySQL para rooms-api
+  # ===========================
+  mysql-rooms:
+    image: mysql:8.0
+    container_name: mysql-rooms
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOMS_ROOT_PASSWORD:-rootrooms}
+      MYSQL_DATABASE: ${ROOMS_DB_NAME:-roomsdb}
+      MYSQL_USER: ${ROOMS_DB_USER:-roomsuser}
+      MYSQL_PASSWORD: ${ROOMS_DB_PASSWORD:-roomspass}
+    ports:
+      - "3308:3306"
+    volumes:
+      - mysql_rooms_data:/var/lib/mysql
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${MYSQL_ROOMS_ROOT_PASSWORD:-rootrooms}" ]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+    restart: unless-stopped
+
+  # ===========================
+  # 🔹 Base de datos MongoDB (solo para reservations)
+  # ===========================
+  mongodb:
+    image: mongo:7.0
+    container_name: mongodb
+    restart: always
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:-root}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-rootpass}
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: [ "CMD", "mongosh", "--eval", "db.adminCommand('ping')" ]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+
+  # ===========================
+  # 🔹 RabbitMQ para eventos
+  # ===========================
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    restart: always
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:-guest}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: [ "CMD", "rabbitmq-diagnostics", "-q", "ping" ]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 40s
+
+  # ===========================
+  # 🔹 Apache Solr para búsqueda
+  # ===========================
+  solr:
+    image: solr:9.5
+    container_name: solr
+    restart: always
+    ports:
+      - "8983:8983"
+    volumes:
+      - solr_data:/var/solr
+    environment:
+      - SOLR_HEAP=512m
+    command:
+      - solr-precreate
+      - rooms-core
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8983/solr/rooms-core/admin/ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # ===========================
+  # 🔹 Memcached para caché
+  # ===========================
+  memcached:
+    image: memcached:1.6-alpine
+    container_name: memcached
+    restart: always
+    ports:
+      - "11211:11211"
+    command: memcached -m 64
+
+  # ===========================
+  # 🔹 Microservicio Users API — imagen publicada
+  # ===========================
+  users-api:
+    image: ghcr.io/emaboz/ingsoft3-reservas-hotel-users-api:v0.1.0
+    container_name: users-api
+    environment:
+      - DB_HOST=mysql-users
+      - DB_PORT=3306
+      - DB_USER=${USERS_DB_USER:-user}
+      - DB_PASSWORD=${USERS_DB_PASSWORD:-userpass}
+      - DB_NAME=${USERS_DB_NAME:-usersdb}
+      - JWT_SECRET=${JWT_SECRET:-your-super-secret-jwt-key-change-this-in-production}
+      - MEMCACHED_HOST=memcached
+      - MEMCACHED_PORT=11211
+      - MEMCACHED_TTL=600
+    depends_on:
+      mysql-users:
+        condition: service_healthy
+      memcached:
+        condition: service_started
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+  # ===========================
+  # 🔹 Microservicio Rooms API — imagen publicada
+  # ===========================
+  rooms-api:
+    image: ghcr.io/emaboz/ingsoft3-reservas-hotel-rooms-api:v0.1.0
+    container_name: rooms-api
+    restart: always
+    depends_on:
+      mysql-rooms:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      search-api:
+        condition: service_healthy
+    environment:
+      - DB_HOST=mysql-rooms
+      - DB_PORT=3306
+      - DB_USER=${ROOMS_DB_USER:-roomsuser}
+      - DB_PASSWORD=${ROOMS_DB_PASSWORD:-roomspass}
+      - DB_NAME=${ROOMS_DB_NAME:-roomsdb}
+      - JWT_SECRET=${JWT_SECRET:-your-super-secret-jwt-key-change-this-in-production}
+      - RABBITMQ_URL=amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASS:-guest}@rabbitmq:5672/
+      - MEMCACHED_HOST=memcached
+      - MEMCACHED_PORT=11211
+      - MEMCACHED_TTL=300
+      - SEARCH_API_BASE_URL=http://search-api:8083
+    ports:
+      - "8081:8080"
+
+  # ===========================
+  # 🔹 Microservicio Reservations API — imagen publicada
+  # ===========================
+  reservations-api:
+    image: ghcr.io/emaboz/ingsoft3-reservas-hotel-reservations-api:v0.1.0
+    container_name: reservations-api
+    restart: always
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      MONGO_URI: "mongodb://${MONGO_ROOT_USER:-root}:${MONGO_ROOT_PASSWORD:-rootpass}@mongodb:27017/?authSource=admin"
+      MONGO_DB_NAME: "mongodb"
+      RABBITMQ_URL: "amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASS:-guest}@rabbitmq:5672/"
+    ports:
+      - "8082:8080"
+
+  # ===========================
+  # 🔹 Microservicio Search API — imagen publicada
+  # ===========================
+  search-api:
+    image: ghcr.io/emaboz/ingsoft3-reservas-hotel-search-api:v0.1.0
+    container_name: search-api
+    restart: always
+    depends_on:
+      solr:
+        condition: service_healthy
+      memcached:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      - SOLR_URL=http://solr:8983/solr
+      - SOLR_CORE=rooms-core
+      - MEMCACHED_HOST=memcached
+      - MEMCACHED_PORT=11211
+      - LOCAL_CACHE_TTL_SECONDS=60
+      - DISTRIBUTED_CACHE_TTL_SECONDS=300
+      - RABBITMQ_URL=amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASS:-guest}@rabbitmq:5672/
+      - ROOMS_API_BASE_URL=http://rooms-api:8080
+      - JWT_SECRET=${JWT_SECRET:-your-super-secret-jwt-key-change-this-in-production}
+      - PORT=8083
+      - GIN_MODE=release
+    ports:
+      - "8083:8083"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8083/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  # ===========================
+  # 🔹 Frontend — imagen publicada
+  # ===========================
+  frontend:
+    image: ghcr.io/emaboz/ingsoft3-reservas-hotel-frontend:v0.1.0
+    container_name: frontend
+    restart: unless-stopped
+    depends_on:
+      - users-api
+      - rooms-api
+      - reservations-api
+      - search-api
+    ports:
+      - "3000:80"
+
+volumes:
+  mysql_users_data:
+  mysql_rooms_data:
+  mongo_data:
+  rabbitmq_data:
+  solr_data:
