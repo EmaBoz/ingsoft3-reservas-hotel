@@ -8,7 +8,6 @@ import (
 
 	"users-api/config"
 	"users-api/controllers"
-	"users-api/paquete-que-no-existe"
 	"users-api/repositories"
 	"users-api/services"
 
