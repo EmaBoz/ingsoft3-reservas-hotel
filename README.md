@@ -1,5 +1,7 @@
 # 🏨 Sistema de Reservas de Hotel — Arquitectura de Microservicios
 
+[![CI](https://github.com/EmaBoz/ingsoft3-reservas-hotel/actions/workflows/ci.yml/badge.svg)](https://github.com/EmaBoz/ingsoft3-reservas-hotel/actions/workflows/ci.yml)
+
 Aplicación web para la gestión y reserva de habitaciones de hotel, construida con una
 **arquitectura de microservicios** en Go y un frontend en React. Los servicios se
 comunican de forma **event-driven** mediante RabbitMQ y usan cachés (Memcached + caché
