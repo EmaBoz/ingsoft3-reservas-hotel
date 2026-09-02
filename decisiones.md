@@ -91,8 +91,8 @@ Contra los criterios de la guía (TP2 §3.3 / `elegir-app.md`):
   alcanza con CRUD, sin dependencias exóticas"). Elegí **mantener la arquitectura de
   microservicios completa** (4 backends + Solr + Memcached + RabbitMQ + 2 motores de base de
   datos) en lugar de recortarla a un solo servicio, porque:
-  1. Es la app que ya tengo construida y entiendo a fondo (developed for another course,
-     but authored personally — not a group project delivered elsewhere).
+  1. Es la app que ya tengo construida y entiendo a fondo — la conozco lo suficiente como
+     para modificarla y defenderla en la mesa, que es el criterio #5 de `elegir-app.md`.
   2. Cada pieza (colas, caché, búsqueda) es justamente el tipo de componente que esta materia
      enseña a operar en producción (TP6 en adelante), así que tenerlas desde ahora es más
      representativo del "sistema de entrega profesional" que busca la cursada.

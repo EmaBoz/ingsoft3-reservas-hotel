@@ -171,8 +171,7 @@ docker compose -f docker-compose.registry.yml up -d
     ├── users-api/                  # Go · MySQL · Dockerfile multi-stage
     ├── rooms-api/                  # Go · MySQL · RabbitMQ (publisher) · Dockerfile
     ├── reservations-api/           # Go · MongoDB · RabbitMQ · Dockerfile
-    ├── search-api/                 # Go · Solr · RabbitMQ (consumer) · Memcached · Dockerfile
-    └── solr/                       # Configset del core de Solr
+    └── search-api/                 # Go · Solr · RabbitMQ (consumer) · Memcached · Dockerfile
 ```
 
 Cada microservicio sigue una arquitectura por capas: `controllers` → `services` →
@@ -186,6 +185,15 @@ Cada microservicio sigue una arquitectura por capas: `controllers` → `services
 Las credenciales de `docker-compose.yml` y `.env.example` son **valores de ejemplo para
 desarrollo local**. En un entorno real, definí un `.env` propio con secretos fuertes y
 nunca lo subas al repositorio (ya está en `.gitignore`).
+
+---
+
+## 🐛 Bug conocido
+
+La búsqueda de habitaciones (`/search-api/...` desde el frontend) devuelve 404: el prefijo de
+ruta que usa el frontend no coincide con el que expone `search-api`. Reportado y documentado como
+parte del TP3 — ver [issue #10](https://github.com/EmaBoz/ingsoft3-reservas-hotel/issues/10) y
+`decisiones.md`.
 
 ---
 
