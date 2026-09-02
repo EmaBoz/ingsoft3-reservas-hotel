@@ -1,4 +1,4 @@
-# ingsoft3-reservas-hotel
+# Proyecto IngSoft3 - versión A
 Ingeniería de Software 3 (UCC) — Sistema de Reservas de Hotel: pipeline DevOps completo sobre una arquitectura de microservicios (Go + React + MySQL/MongoDB).
 
 ## Instalación
