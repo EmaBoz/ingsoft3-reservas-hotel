@@ -14,6 +14,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// getenv lee una variable de entorno con un valor por defecto si no está seteada.
 func getenv(key, def string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
