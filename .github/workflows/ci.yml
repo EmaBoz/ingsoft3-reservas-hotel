@@ -287,3 +287,39 @@ jobs:
             sleep 20
           done
           echo "❌ QA no respondió a tiempo"; exit 1
+
+  deploy-prod:
+    runs-on: self-hosted
+    needs: deploy-qa                            # PROD sólo después de QA vivo (y por eso sólo en main)
+    environment: production                     # acá la corrida se pausa hasta que alguien apruebe
+    concurrency:
+      group: deploy-prod
+      cancel-in-progress: false
+    env:
+      DB_PASSWORD: ${{ secrets.DB_PASSWORD }}   # secrets del environment production
+      JWT_SECRET: ${{ secrets.JWT_SECRET }}
+    steps:
+      - name: Bajar el commit aprobado
+        uses: actions/checkout@v6
+
+      - name: Levantar PROD local
+        shell: bash
+        run: docker compose -f compose.prod.yml up -d --build
+
+      - name: Smoke test PROD
+        shell: bash
+        env:
+          URL_ROOMS: http://localhost:8282
+          URL_FRONT: http://localhost:3200
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS --max-time 10 "$URL_ROOMS/health" > /dev/null \
+               && curl -fsS --max-time 10 "$URL_FRONT/api/v1/rooms" > /dev/null \
+               && curl -fsS --max-time 10 "$URL_FRONT/api/reservations" > /dev/null \
+               && curl -fsS --max-time 10 "$URL_FRONT/users" > /dev/null \
+               && curl -fsS --max-time 10 "$URL_FRONT/" > /dev/null; then
+              echo "✅ PROD responde (apis + bases + front)"; exit 0
+            fi
+            sleep 20
+          done
+          echo "❌ PROD no respondió a tiempo"; exit 1
