@@ -16,7 +16,7 @@ export function Home() {
         <div className="bg-gradient-to-r from-primary-600 to-primary-800 rounded-xl shadow-xl p-12 text-white">
           <div className="max-w-3xl">
             <h1 className="text-4xl md:text-5xl font-bold mb-4">
-              Bienvenido a Grand Prix
+              Bienvenido al Hotel Grand Prix
             </h1>
             <p className="text-xl mb-8 text-primary-100">
               {isAuthenticated
