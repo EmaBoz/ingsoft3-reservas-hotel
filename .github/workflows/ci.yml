@@ -252,3 +252,38 @@ jobs:
           tags: ghcr.io/emaboz/ingsoft3-reservas-hotel-frontend:sha-${{ github.sha }}
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,mode=max,scope=frontend
+
+  deploy-qa:
+    runs-on: self-hosted                        # fallback local: mi notebook
+    needs: [build-users-api, build-rooms-api, build-reservations-api, build-search-api, build-frontend]
+    if: github.ref == 'refs/heads/main'         # los PR verifican; sólo main despliega
+    environment: qa
+    env:
+      DB_PASSWORD: ${{ secrets.DB_PASSWORD }}   # secrets del environment qa
+      JWT_SECRET: ${{ secrets.JWT_SECRET }}
+    steps:
+      - name: Bajar el commit verificado
+        uses: actions/checkout@v6
+
+      - name: Levantar QA local
+        shell: bash
+        run: docker compose -f compose.qa.yml up -d --build
+
+      - name: Smoke test (espera a que QA conteste)
+        shell: bash
+        env:
+          URL_ROOMS: http://localhost:8182
+          URL_FRONT: http://localhost:3100
+        run: |
+          echo "Esperando a que QA esté vivo..."
+          for i in $(seq 1 30); do
+            if curl -fsS --max-time 10 "$URL_ROOMS/health" > /dev/null \
+               && curl -fsS --max-time 10 "$URL_FRONT/api/v1/rooms" > /dev/null \
+               && curl -fsS --max-time 10 "$URL_FRONT/api/reservations" > /dev/null \
+               && curl -fsS --max-time 10 "$URL_FRONT/users" > /dev/null \
+               && curl -fsS --max-time 10 "$URL_FRONT/" > /dev/null; then
+              echo "✅ QA responde (apis + bases + front)"; exit 0
+            fi
+            sleep 20
+          done
+          echo "❌ QA no respondió a tiempo"; exit 1
