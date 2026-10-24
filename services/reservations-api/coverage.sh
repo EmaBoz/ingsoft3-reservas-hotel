@@ -4,7 +4,7 @@
 set -e -o pipefail
 
 # Umbral sobre cobertura de sentencias (Go no mide ramas). Justificado en decisiones.md.
-UMBRAL=60
+UMBRAL=65
 OUT=${OUT_DIR:-/out}
 mkdir -p "$OUT"
 
