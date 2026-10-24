@@ -363,3 +363,167 @@ existió en el README). Los corregí en un PR aparte (`chore: correcciones de la
 siguiendo la convención del TP1 (§3.7), **moví el tag `v4.0.0`** al commit corregido en vez de
 dejarlo apuntando a la versión con el error — son correcciones de documentación, no cambios de
 comportamiento del sistema.
+
+---
+
+## TP5 — Testing: unit tests, coverage y el umbral que frena un merge
+
+### Qué testeé y por qué eso
+
+- **Backend: `reservations-api`.** Es donde un bug duele de verdad: si se rompe la regla de
+  superposición, dos personas reservan la misma habitación las mismas noches, y eso no se arregla
+  con un reintento. Las reglas que cubren los tests (`services/reservation-services_test.go`):
+  1. las fechas de entrada y salida son obligatorias;
+  2. la salida tiene que ser posterior a la entrada (el borde es el mismo día);
+  3. no se puede reservar una habitación que ya está reservada en esas fechas (devuelve conflicto y
+     **no guarda**);
+  4. para cancelar hacen falta id y motivo, y sólo se cancela una reserva que existe.
+
+  Además, los handlers (`controllers/reservation-controller_test.go`): que cada error del servicio
+  salga con su código HTTP (400 si el body está incompleto, 409 si la habitación está ocupada, 404
+  si la reserva no existe, 201 si se crea). En total son 16 funciones de test; dos son
+  parametrizadas (tabla de casos + `t.Run`, el equivalente en Go del `[Theory]`).
+- **Los otros tres microservicios** (`users-api`, `rooms-api`, `search-api`) por ahora sólo tienen
+  el gate del TP4 (que compilen). Es lo siguiente que habría que sumar, empezando por `users-api`
+  (login y hash de contraseñas).
+- **Frontend.** No había lógica testeable: el cálculo de noches, el total y la validación de fechas
+  estaban adentro del componente `ReserveRoom.tsx`. Los saqué a `src/lib/reservas.ts` como
+  funciones puras, y el componente ahora sólo las llama. Los tests están en
+  `src/lib/reservas.test.ts`: `it.each` para el total, casos de error de `validarFechas` (con el
+  mensaje que ve el usuario) y el mock del cliente HTTP.
+
+Para saber si los tests verifican algo, invertí cada regla a mano y miré que algo se pusiera rojo:
+`<=` por `<` en la fecha de salida (falla el caso de borde "salida el mismo día"), sacar el chequeo
+de superposición, `||` por `&&` en las fechas obligatorias, sacar el motivo obligatorio, y en el
+front `<= 0` por `< 0` en `validarFechas`. Todos quedaron en rojo.
+
+### El mock, y el refactor que hizo falta
+
+- **Backend:** no hizo falta refactorizar. `reservationService` ya recibía el repositorio y el
+  publisher por constructor, como interfaces (`ReservationRepository`, `EventPublisher`). El doble
+  es un struct escrito a mano (`repoMock`) que implementa la interfaz, devuelve lo que el test le
+  configura y **anota las llamadas**. `TestCrearReserva_HabitacionOcupada_DevuelveConflictoYNoGuarda`
+  es un mock y no un stub porque el assert mira la interacción: que se consultó la disponibilidad de
+  la habitación 101 una sola vez y que `Create` **no** se llamó. El publisher es un stub que no hace
+  nada (el evento sale en una goroutine y no es lo que verifico).
+- **Frontend:** sí refactoricé. La carga de "Mis reservas" llamaba a axios adentro del componente,
+  así que no había por dónde meter un doble. Ahora `misReservas(userId, traer)` recibe el cliente
+  por parámetro: la pantalla le pasa el real (`traerJson`, en `reservationService.ts`) y el test le
+  pasa un `vi.fn()`. Un test lo usa como stub (contesta una lista) y otro como mock
+  (`toHaveBeenCalledWith` con la ruta del usuario).
+
+### Herramientas (mi stack es Go + React/TS, no el de la cátedra)
+
+| Lo que pide la tabla | Qué usé |
+|---|---|
+| Test parametrizado | Go: tabla de casos + `t.Run` · TS: `it.each` |
+| El doble | Go: struct a mano que implementa la interfaz · TS: `vi.fn()` |
+| Medir la cobertura | Go: `go test -coverpkg=./... -coverprofile` · TS: `@vitest/coverage-v8` |
+| Umbral que rompe el build | Go: `coverage.sh` compara el total de `go tool cover -func` con el umbral y sale con 1 · TS: `coverage.thresholds` de vitest |
+| Qué entra en la cuenta | Go: `grep -v` sobre el perfil (por exclusión) · TS: `include` / `exclude` en `vite.config.ts` |
+
+Los dos corren adentro de la etapa `test` de su Dockerfile (`FROM builder AS test` /
+`FROM build AS test`): el pipeline construye esa etapa y la corre con `docker run`, así no hay una
+segunda receta de build.
+
+### El umbral
+
+- **Backend: 60 % de sentencias.** Mi suite hoy mide **66,7 %**. Puse 60 y no 66 por algo que vi
+  midiendo: `CreateReservation` y `DeleteReservation` publican el evento en una goroutine, y si el
+  test termina antes de que corra, esas líneas no cuentan. En una corrida me dio 59 % y en las
+  siguientes 62,9 % con el mismo código; con el umbral pegado al número tendría un gate flaky. Para
+  subirlo tendría que testear los métodos que sólo pasan el pedido al repositorio (`GetAll`,
+  `GetmyReservations`) y las ramas de error 500 de los handlers. **Go no mide ramas**: `-cover` es
+  cobertura de sentencias, así que del backend no tengo número de rama.
+- **Frontend: 80 % de líneas y 80 % de ramas.** Hoy mide **100 % de líneas y 100 % de ramas**
+  sobre `src/lib`. No puse 100 porque me trabaría por cualquier rama defensiva; con 80, el código
+  nuevo tiene que entrar testeado (lo comprobé en el PR #21). Puse las dos métricas porque con
+  vitest 3 (el mío es 3.2.7) una función que nadie llama no suma ramas, sólo líneas.
+
+Resumen de coverage en la corrida, con los dos reportes descargables (`coverage-reservations-api` y
+`coverage-frontend`): https://github.com/EmaBoz/ingsoft3-reservas-hotel/actions/runs/40129216437
+
+### Qué dejé afuera de la cuenta
+
+- **Backend** (`coverage.sh`): `cmd/server` y `config/` (el arranque: arma las conexiones y las
+  rutas, sin reglas), `domain/` (structs de datos y DTOs, sin comportamiento), y `repositories/` y
+  `events/`. Estos dos últimos sí tienen código, pero son el borde con Mongo y RabbitMQ: un unit
+  test con doble no puede verificar si la consulta de superposición está bien escrita, porque
+  reemplaza justamente a la base. Eso lo tiene que ver una prueba contra la base de verdad (TP7).
+  Lo dejo dicho como hueco conocido, no como "no hace falta testearlo". Se sacan con `grep -v` sobre
+  el perfil, o sea por exclusión: un paquete nuevo entra solo a la cuenta.
+- **Frontend** (`vite.config.ts`): entra `src/lib/**` menos `src/lib/axios.ts`, que es la
+  configuración del cliente HTTP (base URL y header del token), no una regla mía. Los componentes
+  React no entran: los tests de componentes son opcionales en la guía, y la pantalla completa la
+  verifica la e2e del TP7.
+
+### Por qué un coverage alto no es calidad (con mi ejemplo)
+
+El frontend da 100 %. Si borro todos los `expect` de `reservas.test.ts`, sigue dando 100 %: las
+funciones se ejecutan igual, sólo que nadie verifica qué devuelven. En el backend pasa lo mismo:
+un test que llame a `CreateReservation` con una reserva válida y no mire el resultado deja la
+función casi al 100 % sin comprobar que la reserva queda `active`. Si alguien cambia el `<=` de
+`dto.EndDate <= dto.StartDate` por `<`, lo atrapa el caso de borde "salida el mismo día que la
+entrada", no el número de cobertura.
+
+### Los dos Pull Requests del freno
+
+1. **El que cuenta la historia (mergeado): https://github.com/EmaBoz/ingsoft3-reservas-hotel/pull/21**
+   Agregué `etiquetaDeReserva` (Próxima / En curso / Finalizada / Cancelada en "Mis reservas") sin
+   tests. Los 12 tests pasaban y compilaba, pero el check `build-frontend` quedó rojo **por
+   líneas**: `ERROR: Coverage for lines (55.26%) does not meet global threshold (80%)`. Las ramas
+   seguían en 100 % porque vitest 3 no cuenta las ramas de una función que nunca se ejecuta.
+   Corrida roja: https://github.com/EmaBoz/ingsoft3-reservas-hotel/actions/runs/40129453727
+   Lo arreglé con un test por cada camino que declara la función (cancelada, sin fechas, próxima,
+   en curso, finalizada), con `hoy` fijo por parámetro para no depender del reloj. Volvió a 100 %,
+   el check pasó a verde y lo mergeé.
+2. **El que queda abierto y en rojo: https://github.com/EmaBoz/ingsoft3-reservas-hotel/pull/22**
+   Agrega `ValidarEstadia` en `reservations-api` sin tests. Compila y todos los tests pasan, pero
+   `build-reservations-api` falla con `ERROR: la cobertura de sentencias (59.8%) no llega al umbral
+   (60%)` y el merge queda bloqueado.
+   Corrida roja: https://github.com/EmaBoz/ingsoft3-reservas-hotel/actions/runs/40129742111
+
+La diferencia con el freno del TP4: allá frenaba algo que no compilaba. Acá todo compila y anda, y
+lo que frena es un criterio de calidad que elegí yo. Lo que este freno deja pasar igual: un test
+que ejecuta el código sin un assert que sirva, o una regla mal entendida desde el requisito (el test
+congela lo que yo entendí, no lo que se pidió).
+
+### El camino sin cubrir
+
+La primera vez que medí el frontend, el reporte de `reservas.ts` daba 100 % de líneas y 90,9 % de
+ramas, con la línea 9 marcada:
+
+```ts
+if (!entrada || !salida) return 0;   // en calcularNoches
+```
+
+- **Qué entrada la recorre:** una fecha vacía, por ejemplo `calcularTotal('', '2026-11-12', 100)`.
+  Pasa de verdad: el input de fecha deja borrar el valor, y sin ese `if` `new Date('')` es una fecha
+  inválida y la pantalla mostraría `$NaN` como total.
+- **Qué decidí:** agregar el test (`da 0 y no NaN si el usuario borró la fecha de entrada`), porque
+  protege algo que ve el usuario. Con eso las ramas pasaron a 100 %.
+
+### Problemas encontrados
+
+- **El número del backend variaba entre corridas** (59 % y 62,9 % con el mismo código) por las
+  goroutines que publican eventos. Lo vi corriendo los tests varias veces seguidas con `-count=1`,
+  y por eso el umbral quedó con margen (60 contra 66,7).
+- **`go test` imprime otro porcentaje** ("29.5% of statements in ./..."): es la cobertura sobre todo
+  el módulo, antes de sacar lo excluido. El número que vale es el que imprime `coverage.sh` después
+  del filtro, que es el mismo que va al resumen de la corrida.
+- **La clave `test:` de `vite.config.ts` no compilaba** en `tsc -b` hasta que agregué
+  `/// <reference types="vitest/config" />` arriba del archivo.
+- **Un commit local viejo ("prueba") que nunca había subido** apareció al hacer el primer `pull`
+  después de mergear y armó un merge raro en mi `main` local. No llegó a GitHub: lo saqué de `main`
+  y lo dejé guardado en una rama local de respaldo.
+
+### Declaración de uso de IA
+
+Usé Claude Code (Claude Opus 5.5) para escribir los tests, el `coverage.sh`, los pasos del
+`ci.yml` y este texto, a partir del enunciado del TP5. Decisiones mías: testear `reservations-api`
+y no los cuatro servicios, el umbral de cada lado y qué dejar afuera de la cuenta. Cómo lo
+verifiqué: corrí las etapas de test de los dos Dockerfiles en mi máquina antes de subir; invertí
+cada regla a mano y comprobé que algún test se pusiera rojo (lista arriba); y en el pipeline
+confirmé que el rojo del PR #21 era por cobertura y no por un test fallando (el log dice
+`12 passed` arriba del `ERROR`). Lo que la suite no cubre: los repositorios y el publisher (Mongo y
+RabbitMQ), las ramas de error 500 de los handlers y los otros tres microservicios.
