@@ -31,3 +31,24 @@ export async function misReservas(userId: string, traer: TraerReservas): Promise
   const data = await traer(`/api/reservations/users/${userId}/myreservations`);
   return data.reservations || [];
 }
+
+// Cómo se le muestra al usuario una reserva, según su estado y sus fechas.
+// "hoy" entra por parámetro (yyyy-MM-dd) para no depender del reloj.
+export function etiquetaDeReserva(
+  reserva: Pick<Reservation, 'status' | 'start_date' | 'end_date'>,
+  hoy: string
+): string {
+  if (reserva.status === 'canceled') {
+    return 'Cancelada';
+  }
+  if (!reserva.start_date || !reserva.end_date) {
+    return 'Sin fechas';
+  }
+  if (hoy < reserva.start_date) {
+    return 'Próxima';
+  }
+  if (hoy < reserva.end_date) {
+    return 'En curso';
+  }
+  return 'Finalizada';
+}

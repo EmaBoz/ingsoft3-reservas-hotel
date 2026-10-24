@@ -4,7 +4,8 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Calendar, MapPin, X, RefreshCw } from 'lucide-react';
 import { reservationService, traerJson } from '@/services/reservationService';
-import { misReservas } from '@/lib/reservas';
+import { misReservas, etiquetaDeReserva } from '@/lib/reservas';
+import { format } from 'date-fns';
 import { authService } from '@/services/authService';
 import type { Reservation } from '@/types';
 
@@ -56,23 +57,19 @@ export function MyReservations() {
     }
   };
 
-  const getStatusBadge = (status: string) => {
-    const statusConfig = {
-      active: { bg: 'bg-green-100', text: 'text-green-700', label: 'Activa' },
-      canceled: { bg: 'bg-red-100', text: 'text-red-700', label: 'Cancelada' },
-      pending: { bg: 'bg-yellow-100', text: 'text-yellow-700', label: 'Pendiente' },
-      completed: { bg: 'bg-blue-100', text: 'text-blue-700', label: 'Completada' },
-    };
+  const hoy = format(new Date(), 'yyyy-MM-dd');
 
-    const config = statusConfig[status as keyof typeof statusConfig] || {
-      bg: 'bg-gray-100',
-      text: 'text-gray-700',
-      label: status,
+  const getStatusBadge = (etiqueta: string) => {
+    const colores: Record<string, string> = {
+      'Próxima': 'bg-green-100 text-green-700',
+      'En curso': 'bg-blue-100 text-blue-700',
+      'Finalizada': 'bg-gray-100 text-gray-700',
+      'Cancelada': 'bg-red-100 text-red-700',
     };
 
     return (
-      <span className={`px-3 py-1 ${config.bg} ${config.text} rounded-full text-sm font-medium`}>
-        {config.label}
+      <span className={`px-3 py-1 ${colores[etiqueta] || 'bg-gray-100 text-gray-700'} rounded-full text-sm font-medium`}>
+        {etiqueta}
       </span>
     );
   };
@@ -140,7 +137,7 @@ export function MyReservations() {
                         <div className="text-2xl font-bold text-primary-600">
                           #{reservation.id.slice(-6)}
                         </div>
-                        {getStatusBadge(reservation.status)}
+                        {getStatusBadge(etiquetaDeReserva(reservation, hoy))}
                       </div>
 
                       <div className="flex items-center space-x-6 text-sm text-gray-600">
