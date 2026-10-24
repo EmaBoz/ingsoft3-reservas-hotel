@@ -404,8 +404,9 @@ front `<= 0` por `< 0` en `validarFechas`. Todos quedaron en rojo.
   es un struct escrito a mano (`repoMock`) que implementa la interfaz, devuelve lo que el test le
   configura y **anota las llamadas**. `TestCrearReserva_HabitacionOcupada_DevuelveConflictoYNoGuarda`
   es un mock y no un stub porque el assert mira la interacción: que se consultó la disponibilidad de
-  la habitación 101 una sola vez y que `Create` **no** se llamó. El publisher es un stub que no hace
-  nada (el evento sale en una goroutine y no es lo que verifico).
+  la habitación 101 una sola vez y que `Create` **no** se llamó. En la mayoría de los tests el
+  publisher es un stub que no hace nada; en el alta y la cancelación válidas es un mock
+  (`publisherMock`) que recibe el evento por un canal, y el test verifica qué evento se publicó.
 - **Frontend:** sí refactoricé. La carga de "Mis reservas" llamaba a axios adentro del componente,
   así que no había por dónde meter un doble. Ahora `misReservas(userId, traer)` recibe el cliente
   por parámetro: la pantalla le pasa el real (`traerJson`, en `reservationService.ts`) y el test le
