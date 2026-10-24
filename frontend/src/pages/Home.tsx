@@ -43,7 +43,7 @@ export function Home() {
         {/* Features */}
         <div>
           <h2 className="text-3xl font-bold text-gray-900 mb-8 text-center">
-            ¿Por qué elegir Grand Prix?
+            ¿Por qué elegir el Hotel Grand Prix?
           </h2>
           <div className="grid md:grid-cols-3 gap-6">
             <Card>
