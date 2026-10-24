@@ -442,8 +442,9 @@ front `<= 0` por `< 0` en `validarFechas`. Todos quedaron en rojo.
   es un struct escrito a mano (`repoMock`) que implementa la interfaz, devuelve lo que el test le
   configura y **anota las llamadas**. `TestCrearReserva_HabitacionOcupada_DevuelveConflictoYNoGuarda`
   es un mock y no un stub porque el assert mira la interacción: que se consultó la disponibilidad de
-  la habitación 101 una sola vez y que `Create` **no** se llamó. El publisher es un stub que no hace
-  nada (el evento sale en una goroutine y no es lo que verifico).
+  la habitación 101 una sola vez y que `Create` **no** se llamó. En la mayoría de los tests el
+  publisher es un stub que no hace nada; en el alta y la cancelación válidas es un mock
+  (`publisherMock`) que recibe el evento por un canal, y el test verifica qué evento se publicó.
 - **Frontend:** sí refactoricé. La carga de "Mis reservas" llamaba a axios adentro del componente,
   así que no había por dónde meter un doble. Ahora `misReservas(userId, traer)` recibe el cliente
   por parámetro: la pantalla le pasa el real (`traerJson`, en `reservationService.ts`) y el test le
@@ -466,13 +467,13 @@ segunda receta de build.
 
 ### El umbral
 
-- **Backend: 60 % de sentencias.** Mi suite hoy mide **66,7 %**. Puse 60 y no 66 por algo que vi
-  midiendo: `CreateReservation` y `DeleteReservation` publican el evento en una goroutine, y si el
-  test termina antes de que corra, esas líneas no cuentan. En una corrida me dio 59 % y en las
-  siguientes 62,9 % con el mismo código; con el umbral pegado al número tendría un gate flaky. Para
-  subirlo tendría que testear los métodos que sólo pasan el pedido al repositorio (`GetAll`,
-  `GetmyReservations`) y las ramas de error 500 de los handlers. **Go no mide ramas**: `-cover` es
-  cobertura de sentencias, así que del backend no tengo número de rama.
+- **Backend: 65 % de sentencias.** Mi suite mide **66,7 %**, siempre el mismo número (lo corrí 15
+  veces seguidas). Puse 65 para que me frene apenas entre código sin tests, sin que sea
+  inalcanzable. Al principio era 60, con margen, porque el número variaba entre corridas; cuando
+  arreglé esa variación lo subí (ver "Problemas encontrados"). Para subirlo más tendría que testear
+  los métodos que sólo pasan el pedido al repositorio (`GetAll`, `GetmyReservations`) y las ramas
+  de error 500 de los handlers. **Go no mide ramas**: `-cover` es cobertura de sentencias, así que
+  del backend no tengo número de rama.
 - **Frontend: 80 % de líneas y 80 % de ramas.** Hoy mide **100 % de líneas y 100 % de ramas**
   sobre `src/lib`. No puse 100 porque me trabaría por cualquier rama defensiva; con 80, el código
   nuevo tiene que entrar testeado (lo comprobé en el PR #21). Puse las dos métricas porque con
@@ -518,7 +519,8 @@ entrada", no el número de cobertura.
 2. **El que queda abierto y en rojo: https://github.com/EmaBoz/ingsoft3-reservas-hotel/pull/22**
    Agrega `ValidarEstadia` en `reservations-api` sin tests. Compila y todos los tests pasan, pero
    `build-reservations-api` falla con `ERROR: la cobertura de sentencias (59.8%) no llega al umbral
-   (60%)` y el merge queda bloqueado.
+   (60%)` y el merge queda bloqueado (el umbral en ese momento era 60; con el de ahora, 65, queda
+   igual de frenado).
    Corrida roja: https://github.com/EmaBoz/ingsoft3-reservas-hotel/actions/runs/40129742111
 
 La diferencia con el freno del TP4: allá frenaba algo que no compilaba. Acá todo compila y anda, y
@@ -543,9 +545,17 @@ if (!entrada || !salida) return 0;   // en calcularNoches
 
 ### Problemas encontrados
 
-- **El número del backend variaba entre corridas** (59 % y 62,9 % con el mismo código) por las
-  goroutines que publican eventos. Lo vi corriendo los tests varias veces seguidas con `-count=1`,
-  y por eso el umbral quedó con margen (60 contra 66,7).
+- **El gate del backend era flaky.** `CreateReservation` y `DeleteReservation` publican el evento en
+  una goroutine; si el test terminaba antes de que corriera, esas líneas no contaban. Primero lo vi
+  en mi máquina (59 % y 62,9 % con el mismo código) y le dejé margen al umbral (60). Pero en el PR
+  #29, que sólo cambiaba `decisiones.md`, el check se puso rojo con 59 %: un rojo que no tenía nada
+  que ver con el cambio, que es justo lo que entrena a ignorar el rojo.
+  Corrida: https://github.com/EmaBoz/ingsoft3-reservas-hotel/actions/runs/40135279607
+  Lo arreglé en los tests: en el alta y la cancelación válidas, el publisher pasó a ser un mock que
+  recibe el evento por un canal, y el test lo espera (con un tope de 2 s). Así esas líneas siempre
+  corren, y además el test verifica que se publique el evento correcto (`reservation.created` de
+  la habitación 101, `reservation.canceled` con el motivo). Después de eso dio 66,7 % las 15 veces,
+  y subí el umbral a 65.
 - **`go test` imprime otro porcentaje** ("29.5% of statements in ./..."): es la cobertura sobre todo
   el módulo, antes de sacar lo excluido. El número que vale es el que imprime `coverage.sh` después
   del filtro, que es el mismo que va al resumen de la corrida.
