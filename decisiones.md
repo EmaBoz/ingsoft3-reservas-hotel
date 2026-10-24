@@ -1,3 +1,41 @@
+# Enlaces de entrega (TP6 y TP7)
+
+> ⚠️ **QA y PROD corren en el FALLBACK LOCAL** (TP6 §3.6 / TP7 §3.6): los despliega mi self-hosted
+> runner (`notebook-emanuel`) en mi notebook, así que sus URLs son de `localhost` y están vivas
+> cuando el runner y Docker están prendidos (en la defensa, en mi máquina). Por qué el fallback:
+> sección TP6 más abajo.
+
+## Enlaces de este TP (TP6)
+
+**Paquetes públicos** (ghcr.io, sin credenciales). Los cinco tienen la etiqueta del merge que llegó
+a PROD, `sha-eb2a449ae1914863edf5db4158786968ba455ae7` (release `v6.0.0`):
+
+- https://github.com/users/EmaBoz/packages/container/package/ingsoft3-reservas-hotel-users-api
+- https://github.com/users/EmaBoz/packages/container/package/ingsoft3-reservas-hotel-rooms-api
+- https://github.com/users/EmaBoz/packages/container/package/ingsoft3-reservas-hotel-reservations-api
+- https://github.com/users/EmaBoz/packages/container/package/ingsoft3-reservas-hotel-search-api
+- https://github.com/users/EmaBoz/packages/container/package/ingsoft3-reservas-hotel-frontend
+
+```bash
+docker pull ghcr.io/emaboz/ingsoft3-reservas-hotel-frontend:sha-eb2a449ae1914863edf5db4158786968ba455ae7
+```
+
+**La cadena** (por qué se puede confiar en el registry):
+
+1. PR con los tests en verde y `Entrar al registry` **salteado** (sólo `main` publica):
+   https://github.com/EmaBoz/ingsoft3-reservas-hotel/actions/runs/40130368155/job/120980601808
+2. Corrida de `main` donde `Construir y publicar la imagen` es el **último** paso, después de los
+   tests: https://github.com/EmaBoz/ingsoft3-reservas-hotel/actions/runs/40133943984/job/120991360531
+
+**Entornos** (fallback local):
+
+| | Front | users-api | rooms-api | reservations-api | search-api |
+|---|---|---|---|---|---|
+| **QA** | http://localhost:3100 | :8181 | :8182 | :8183 | :8184 |
+| **PROD** | http://localhost:3200 | :8281 | :8282 | :8283 | :8284 |
+
+---
+
 # Decisiones — TP1 (Git colaborativo)
 
 ## 1. Por qué Git no pudo resolver el conflicto solo
@@ -527,3 +565,184 @@ cada regla a mano y comprobé que algún test se pusiera rojo (lista arriba); y 
 confirmé que el rojo del PR #21 era por cobertura y no por un test fallando (el log dice
 `12 passed` arriba del `ERROR`). Lo que la suite no cubre: los repositorios y el publisher (Mongo y
 RabbitMQ), las ramas de error 500 de los handlers y los otros tres microservicios.
+
+---
+
+## TP6 — CD: environments, aprobaciones y deployment patterns
+
+> Los enlaces de este TP (paquetes, la cadena y las URLs de QA y PROD) están arriba de todo.
+
+### Por qué el fallback local, y cómo cumple el contrato
+
+Mi app no es un back y un front: son 4 microservicios Go, MySQL ×2, MongoDB, RabbitMQ, Solr y
+Memcached. Render free no aloja nada de eso salvo los contenedores web, y `reservations-api` no
+arranca sin Mongo y RabbitMQ. Para ir a la nube tendría que haber migrado dos servicios de MySQL a
+Postgres, Mongo a otro proveedor, RabbitMQ a otro, y dejar Solr afuera, con unos diez servicios
+compartiendo las 750 horas. Por eso usé el plan C de la guía (§3.6): mi notebook como self-hosted
+runner y un proyecto de Compose por entorno. Los cinco puntos del contrato:
+
+1. **Dos entornos separados**: `compose.qa.yml` (proyecto `qa`) y `compose.prod.yml` (proyecto
+   `prod`), corriendo a la vez con puertos distintos (QA 3100 y 8181-8184, PROD 3200 y 8281-8284).
+2. **Una base por entorno**: cada proyecto tiene sus propios volúmenes (`_qa` / `_prod`) y su propia
+   red. Lo comprobé creando un usuario `soyprod` sólo en PROD (`POST localhost:3200/users`): aparece
+   en `localhost:3200/users` y en `localhost:3100/users` no.
+3. **Front y back como contenedores**, desde mis Dockerfiles.
+4. **El deploy lo dispara el pipeline**: `deploy-qa` y `deploy-prod` corren `docker compose up` en el
+   runner. Yo no levanto nada a mano. Antes de mergear probé QA una vez en mi máquina y lo bajé con
+   `down -v` justamente para que lo levante la corrida.
+5. **PROD detrás de la aprobación** del environment `production`.
+
+Lo que pierdo respecto de la nube: no hay URL pública (sólo `localhost`), el entorno depende de que
+mi notebook esté prendida, con Docker y el runner corriendo, y no hay cold start real que manejar.
+
+### Por qué la imagen se publica sólo en verde
+
+Son tres eslabones encadenados: nada entra a `main` sin los checks en verde (protección de rama),
+sólo `main` publica (`push` del paso atado a `push` + `refs/heads/main`), y en cada job publicar es
+el **último** paso, después de los tests: si `docker run` de los tests sale con error, el job muere
+ahí y nunca llega a publicar. No hay un `if` que diga "si pasaron los tests": la condición es el
+orden. Si se publicara igual, el registry dejaría de significar "esto pasó la verificación" y una
+etiqueta `sha-…` podría ser una imagen con tests en rojo. Lo que la cadena **no** garantiza: alguien
+con permiso de escritura puede hacer un `docker push` a mano con una etiqueta `sha-…`; lo único
+que nadie puede mover es el digest (`@sha256:…`).
+
+### Continuous Delivery, no Deployment
+
+Implementé **Continuous Delivery**: cada merge llega solo a QA, y a PROD sólo con una aprobación
+humana. Para Continuous Deployment me faltaría sacar el gate, y no lo querría hoy: el smoke sólo
+dice que la app responde, todavía no tengo pruebas que digan que funciona (llegan en el TP7) ni
+observabilidad para darme cuenta si PROD se rompe (TP9).
+
+### La cadena y los secrets
+
+```
+build-* (5, sin needs) → deploy-qa (needs: los 5 builds · if: main · environment: qa)
+                       → deploy-prod (needs: deploy-qa · environment: production · concurrency)
+```
+
+- `needs` arma la cadena con compuertas: sin los 5 builds en verde no hay deploy a QA, y sin QA vivo
+  no hay PROD. `deploy-prod` no repite el `if` de la rama porque lo hereda: depende de `deploy-qa`,
+  que en un PR sale salteado.
+- **Secrets**: `DB_PASSWORD` y `JWT_SECRET` son **environment secrets**, distintos en `qa` y en
+  `production`. Los de PROD sólo los puede leer un job que pasó la aprobación. En el repo no hay
+  ningún secret: para publicar en ghcr se usa el `GITHUB_TOKEN` de cada corrida, con
+  `packages: write` declarado sólo en los jobs de build.
+- **El commit desplegado es el verificado**: el `checkout` del job de deploy baja el `github.sha` de
+  esa corrida (el equivalente del `&ref=` del hook de Render), no la punta de `main`.
+
+### Qué miro antes de aprobar
+
+1. Que `deploy-qa` esté en verde y abrir QA (`localhost:3100`) para ver el cambio de ese PR.
+2. Que la corrida que apruebo sea la del **último** merge: si hay dos esperando, apruebo la más
+   nueva y rechazo la vieja (aprobar la vieja haría retroceder PROD).
+3. Qué cambió en el PR: si toca un compose, secrets o puertos, lo miro con más tiempo.
+
+Lo que mi aprobador **no** puede ver: si la app funciona más allá de lo que yo pruebe a mano en un
+minuto, y qué le pasa a un usuario en PROD después del deploy. Para eso faltan las e2e (TP7) y
+monitoreo (TP9).
+
+- Rechazo con motivo: https://github.com/EmaBoz/ingsoft3-reservas-hotel/actions/runs/40132680314
+  ("Primer deploy a PROD: antes de aprobar verifico que compose.prod.yml no comparta puertos ni
+  volúmenes con QA.").
+- Aprobación y PROD con el smoke en verde:
+  https://github.com/EmaBoz/ingsoft3-reservas-hotel/actions/runs/40133943984 (el cambio visible es
+  el título del inicio, "Bienvenido al Hotel Grand Prix").
+
+### La "letra chica" de mi infraestructura
+
+No uso free tier de nube, pero el fallback tiene su propio contrato:
+
+- **El runner tiene que estar corriendo** (`C:\actions-runner\iniciar-runner.cmd`). Si está
+  apagado, los jobs de deploy quedan en cola esperando un runner; no fallan.
+- **Docker Desktop prendido.** Los dos entornos juntos son 22 contenedores.
+- **Minutos de Actions**: los builds corren en runners de GitHub (gratis en repo público); los
+  deploys corren en mi máquina y no consumen minutos.
+- **Seguridad del runner**: GitHub desaconseja runners propios en repos públicos porque un PR de un
+  fork podría ejecutar código en mi máquina. Puse *Require approval for all external contributors*
+  y el runner no está como servicio: lo prendo cuando lo uso.
+- El smoke reintenta igual (30 × 20 s): `docker compose up` termina antes de que las apps estén
+  listas (MySQL, RabbitMQ y Solr tardan en arrancar).
+
+### Qué garantía pierdo porque el entorno reconstruye
+
+En este TP el deploy hace `docker compose up --build`: el runner **vuelve a construir** las imágenes
+desde el commit, en vez de usar las que publicó el pipeline. Despliego el commit verificado, pero no
+la imagen verificada: una imagen base que cambió (`alpine:latest`, `nginx:alpine`) o una dependencia
+que se resolvió distinto pueden hacer que lo que corre en QA y en PROD no sea bit a bit lo que pasó
+los tests, y PROD se construye otra vez, aparte de QA. Es lo que arregla el TP7.
+
+### Qué prueba el smoke y qué no
+
+Prueba que `rooms-api` está viva (`/health`), que a través del front (o sea, nginx con la plantilla)
+las rutas de rooms (MySQL), reservas (Mongo) y usuarios (MySQL) contestan 200, y que el front sirve
+la página. **No** prueba qué versión está corriendo: si el `up` no hubiera reemplazado algún
+contenedor, el smoke daría verde contra la versión vieja. Tampoco prueba que la app funcione (que se
+pueda reservar): sólo que responde.
+
+### Qué quedó por variable y qué adentro de la imagen del front
+
+Adentro de la imagen: los estáticos de Vite y la plantilla `default.conf.template`. Por variable, al
+arrancar: `USERS_API_URL`, `ROOMS_API_URL`, `RESERVATIONS_API_URL`, `SEARCH_API_URL` y
+`DNS_RESOLVER`. En el fallback los valores son iguales en QA y en PROD porque cada proyecto de
+Compose tiene su propia red (el `rooms-api` de QA no es el de PROD), pero la plantilla es lo que
+permite que **la misma imagen** sirva en cualquier entorno, que es lo que necesita el TP7.
+
+### Deployment pattern para una producción real
+
+Usaría **blue-green**. Mis servicios no guardan estado (el estado está en las bases), así que puedo
+levantar la versión nueva completa al lado de la vieja, probarla, y cambiar el tráfico de una vez
+desde el proxy. El rollback es volver a apuntar a la vieja, que sigue levantada: segundos, sin
+reconstruir nada. El costo es tener dos juegos de contenedores durante el cambio, y la condición es
+que las bases sean compatibles con las dos versiones a la vez (cambios de esquema en dos pasos).
+Canary me parece mejor para una app con mucho tráfico, pero hoy no tengo con qué decidir si el 5 %
+va bien: no tengo métricas de errores ni de latencia por versión (eso falta hasta el TP9).
+
+### Plan de rollback (cronometrado)
+
+Como el deploy siempre baja un commit explícito, volver atrás es **re-correr el job `deploy-prod`
+de la corrida que desplegó la versión buena** (la de `v6.0.0`): baja ese commit y levanta PROD con
+él. Pasa otra vez por la aprobación, porque es un deploy a producción.
+
+Lo hice de verdad: con PROD en `818f88c` (el PR #28, "¿Por qué elegir el Hotel Grand Prix?"), volví
+a `v6.0.0` (`eb2a449`):
+
+- Disparo (re-run del job): 21:35:25 UTC
+- Aprobación y arranque del job: 21:38:16 UTC
+- Smoke de PROD en verde: 21:38:33 UTC → **3 min 8 s en total**, de los cuales el deploy en sí son
+  **17 s** (el resto es la espera de la aprobación).
+- Job: https://github.com/EmaBoz/ingsoft3-reservas-hotel/actions/runs/40133943984/job/120994216688
+  (intento 2 de esa corrida). En *Deployments* → `production` se ve el deploy de `eb2a449` a esa
+  hora.
+
+Fue rápido porque el runner ya tenía en caché las capas de ese commit; sin caché, reconstruir los
+cinco servicios lleva un par de minutos. Lo que el rollback de código **no** deshace son los datos:
+los volúmenes siguen como estaban (el usuario `soyprod` sigue ahí), y si una versión nueva agregó
+una columna con `AutoMigrate`, esa columna queda.
+
+### Problemas encontrados
+
+- **`denied: permission_denied: write_package` en la primera corrida de `main`.** Los paquetes los
+  había subido a mano en el TP2, así que no estaban vinculados al repo y el `GITHUB_TOKEN` del
+  workflow no podía escribir. Lo resolví dándole al repo rol *Write* en *Manage Actions access* de
+  cada paquete (la primera vez quedó en *Read*, que es el default) y re-corriendo los jobs.
+- **El runner usaba el `bash` de WSL** (`C:\Windows\system32\bash.exe`) en los pasos con
+  `shell: bash`, y fallaba con `execvpe(/bin/bash) failed`. Lo arranco con un `iniciar-runner.cmd`
+  que pone `C:\Program Files\Git\bin` primero en el PATH.
+- **Choque de puertos con el compose de desarrollo**, que tiene `restart: always` y queda levantado
+  en 8080-8083. Por eso QA y PROD usan otros puertos.
+- **Contraseña de prueba en los volúmenes**: probé QA en mi máquina con una contraseña cualquiera, y
+  MySQL guarda la contraseña al inicializar el volumen. Antes del primer deploy lo bajé con
+  `down -v` para que la corrida arranque las bases con la del secret.
+
+### Declaración de uso de IA
+
+Usé Claude Code (Claude Opus 5.5) para escribir los compose de QA y PROD, la plantilla de nginx, los
+jobs de deploy y este texto, siguiendo la guía del TP6. También instaló y registró el runner y cargó
+los secrets con valores al azar, sin mostrarlos. Decisiones mías: el fallback local en vez de
+Render, el motivo del rechazo y las dos aprobaciones (las hice yo desde la web, después de mirar
+QA). Cómo lo verifiqué: comprobé el `docker pull` de los cinco paquetes sin sesión, miré en el log
+que los deploys corrieron en `notebook-emanuel` con el bash de Git, abrí QA y PROD en el navegador,
+y comprobé que un dato creado en PROD no aparece en QA. Entre el merge y PROD pasa esto: los 5
+builds (tests y publicación) → `deploy-qa` en mi runner con los secrets de `qa` y su smoke → pausa
+del environment `production` hasta que apruebo → `deploy-prod` con los secrets de `production` y su
+smoke.
