@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"reservations-api/domain"
 	"reservations-api/utils"
@@ -73,6 +74,40 @@ func (p *publisherStub) PublishReservationCanceled(ctx context.Context, e domain
 }
 
 func (p *publisherStub) Close() error { return nil }
+
+// publisherMock anota los eventos que le publican en un canal. El servicio
+// publica en una goroutine, así que el test espera el evento en vez de
+// asumir que ya se publicó.
+type publisherMock struct {
+	eventos chan domain.ReservationEvent
+}
+
+func nuevoPublisherMock() *publisherMock {
+	return &publisherMock{eventos: make(chan domain.ReservationEvent, 1)}
+}
+
+func (p *publisherMock) PublishReservationCreated(ctx context.Context, e domain.ReservationEvent) error {
+	p.eventos <- e
+	return nil
+}
+
+func (p *publisherMock) PublishReservationCanceled(ctx context.Context, e domain.ReservationEvent) error {
+	p.eventos <- e
+	return nil
+}
+
+func (p *publisherMock) Close() error { return nil }
+
+func esperarEvento(t *testing.T, p *publisherMock) domain.ReservationEvent {
+	t.Helper()
+	select {
+	case e := <-p.eventos:
+		return e
+	case <-time.After(2 * time.Second):
+		t.Fatal("no se publicó ningún evento")
+		return domain.ReservationEvent{}
+	}
+}
 
 func reservaValida() domain.CreateReservationDTO {
 	return domain.CreateReservationDTO{
@@ -182,7 +217,8 @@ func TestCrearReserva_ErrorAlConsultarDisponibilidad_NoGuarda(t *testing.T) {
 func TestCrearReserva_Valida_SeGuardaActiva(t *testing.T) {
 	// Arrange
 	repo := &repoMock{hayOverlap: false}
-	svc := NewReservationService(repo, &publisherStub{})
+	pub := nuevoPublisherMock()
+	svc := NewReservationService(repo, pub)
 
 	// Act
 	creada, err := svc.CreateReservation(context.Background(), reservaValida())
@@ -190,6 +226,9 @@ func TestCrearReserva_Valida_SeGuardaActiva(t *testing.T) {
 	// Assert
 	if err != nil {
 		t.Fatalf("no esperaba error, obtuve: %v", err)
+	}
+	if e := esperarEvento(t, pub); e.EventType != domain.EventReservationCreated || e.RoomID != 101 {
+		t.Errorf("esperaba el evento reservation.created de la habitación 101, llegó %+v", e)
 	}
 	if repo.llamadasCreate != 1 {
 		t.Errorf("esperaba que se guarde una sola vez, Create se llamó %d veces", repo.llamadasCreate)
@@ -261,12 +300,16 @@ func TestBuscarReserva_DevuelveElIDComoTexto(t *testing.T) {
 
 func TestCancelarReserva_Valida_CancelaConElMotivo(t *testing.T) {
 	repo := &repoMock{reserva: domain.Reservation{ID: primitive.NewObjectID(), RoomID: 101}}
-	svc := NewReservationService(repo, &publisherStub{})
+	pub := nuevoPublisherMock()
+	svc := NewReservationService(repo, pub)
 
 	err := svc.DeleteReservation(context.Background(), "abc123", "cambio de planes")
 
 	if err != nil {
 		t.Fatalf("no esperaba error, obtuve: %v", err)
+	}
+	if e := esperarEvento(t, pub); e.EventType != domain.EventReservationCanceled || e.CancelReason == nil || *e.CancelReason != "cambio de planes" {
+		t.Errorf("esperaba el evento reservation.canceled con el motivo, llegó %+v", e)
 	}
 	if repo.llamadasDelete != 1 || repo.motivoDelete != "cambio de planes" {
 		t.Errorf("esperaba un Delete con el motivo, hubo %d con motivo %q", repo.llamadasDelete, repo.motivoDelete)
