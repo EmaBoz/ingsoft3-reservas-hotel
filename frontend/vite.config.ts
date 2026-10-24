@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
@@ -8,6 +9,16 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+    },
+  },
+  test: {
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'html', 'lcov', 'json-summary'],
+      // Entra en la cuenta la lógica de src/lib (ver decisiones.md, TP5)
+      include: ['src/lib/**'],
+      exclude: ['src/lib/axios.ts'],
+      thresholds: { lines: 80, branches: 80 },
     },
   },
   server: {

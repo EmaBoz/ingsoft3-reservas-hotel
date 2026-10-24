@@ -76,6 +76,45 @@ jobs:
           cache-from: type=gha,scope=reservations-api
           cache-to: type=gha,mode=max,scope=reservations-api
 
+      - name: Construir la etapa de tests de reservations-api
+        uses: docker/build-push-action@v7
+        with:
+          context: ./services/reservations-api
+          target: test
+          load: true
+          push: false
+          tags: reservations-api-test:ci
+          cache-from: type=gha,scope=reservations-api-test
+          cache-to: type=gha,mode=max,scope=reservations-api-test
+
+      - name: Correr los tests con coverage
+        run: |
+          docker run --rm -v "${{ github.workspace }}/reservations-coverage:/out" reservations-api-test:ci
+
+      - name: Resumen del coverage de reservations-api
+        if: ${{ !cancelled() }}
+        run: |
+          F=reservations-coverage/coverage.txt
+          test -f "$F"
+          {
+            echo "### Coverage de reservations-api"
+            echo "| métrica | % |"
+            echo "|---|---|"
+            echo "| sentencias | $(tail -n 1 $F | awk '{print $NF}') |"
+            echo "| ramas | Go no la mide (ver decisiones.md) |"
+            echo ""
+            echo '```'
+            cat "$F"
+            echo '```'
+          } >> $GITHUB_STEP_SUMMARY
+
+      - name: Publicar el coverage de reservations-api
+        uses: actions/upload-artifact@v6
+        if: ${{ !cancelled() }}
+        with:
+          name: coverage-reservations-api
+          path: reservations-coverage
+
   build-search-api:
     runs-on: ubuntu-latest
     steps:
@@ -121,3 +160,40 @@ jobs:
           tags: frontend:ci
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,mode=max,scope=frontend
+
+      - name: Construir la etapa de tests del frontend
+        uses: docker/build-push-action@v7
+        with:
+          context: ./frontend
+          target: test
+          load: true
+          push: false
+          tags: frontend-test:ci
+          cache-from: type=gha,scope=frontend-test
+          cache-to: type=gha,mode=max,scope=frontend-test
+
+      - name: Correr los tests del frontend con coverage
+        run: |
+          docker run --rm -e COVERAGE_DIR=/salida/reporte \
+            -v "${{ github.workspace }}/frontend-coverage:/salida" frontend-test:ci
+
+      - name: Resumen del coverage del frontend
+        if: ${{ !cancelled() }}
+        run: |
+          F=frontend-coverage/reporte/coverage-summary.json
+          test -f "$F"
+          node -e "
+            const t = require('./$F').total;
+            if (!t.lines.total) { console.error('midio 0 archivos: revisa el include'); process.exit(1); }
+            const f = (m) => \`| \${m} | \${t[m].pct}% |\`;
+            console.log('### Coverage del frontend');
+            console.log('| métrica | % |'); console.log('|---|---|');
+            console.log(f('lines')); console.log(f('branches')); console.log(f('functions'));
+          " >> $GITHUB_STEP_SUMMARY
+
+      - name: Publicar el coverage del frontend
+        uses: actions/upload-artifact@v6
+        if: ${{ !cancelled() }}
+        with:
+          name: coverage-frontend
+          path: frontend-coverage

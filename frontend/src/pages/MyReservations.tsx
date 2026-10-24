@@ -3,7 +3,8 @@ import { Layout } from '@/components/layout/Layout';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Calendar, MapPin, X, RefreshCw } from 'lucide-react';
-import { reservationService } from '@/services/reservationService';
+import { reservationService, traerJson } from '@/services/reservationService';
+import { misReservas } from '@/lib/reservas';
 import { authService } from '@/services/authService';
 import type { Reservation } from '@/types';
 
@@ -24,8 +25,7 @@ export function MyReservations() {
         return;
       }
       
-      const { reservations } = await reservationService.getMyReservations(String(user.id));
-      setReservations(reservations || []);
+      setReservations(await misReservas(String(user.id), traerJson));
     } catch (e: any) {
       setError(e?.response?.data?.error || 'Error cargando reservas');
       console.error('Error fetching reservations:', e);

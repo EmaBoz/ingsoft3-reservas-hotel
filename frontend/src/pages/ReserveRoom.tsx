@@ -8,7 +8,8 @@ import { roomService } from '@/services/roomService';
 import { reservationService } from '@/services/reservationService';
 import { useAuth } from '@/context/AuthContext';
 import type { Room } from '@/types';
-import { format, addDays, differenceInDays } from 'date-fns';
+import { format, addDays } from 'date-fns';
+import { calcularNoches, calcularTotal, validarFechas } from '@/lib/reservas';
 import { Calendar, Users, MapPin, DollarSign } from 'lucide-react';
 
 export function ReserveRoom() {
@@ -50,29 +51,14 @@ export function ReserveRoom() {
     }
   };
 
-  const calculateTotal = () => {
-    if (!room || !formData.start_date || !formData.end_date) return 0;
-
-    const nights = differenceInDays(
-      new Date(formData.end_date),
-      new Date(formData.start_date)
-    );
-
-    return nights > 0 ? nights * room.price : 0;
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!user || !room) return;
 
-    const nights = differenceInDays(
-      new Date(formData.end_date),
-      new Date(formData.start_date)
-    );
-
-    if (nights <= 0) {
-      setError('La fecha de salida debe ser posterior a la fecha de entrada');
+    const errorFechas = validarFechas(formData.start_date, formData.end_date);
+    if (errorFechas) {
+      setError(errorFechas);
       return;
     }
 
@@ -123,11 +109,8 @@ export function ReserveRoom() {
     return <Layout><div>Habitación no encontrada</div></Layout>;
   }
 
-  const nights = differenceInDays(
-    new Date(formData.end_date),
-    new Date(formData.start_date)
-  );
-  const total = calculateTotal();
+  const nights = calcularNoches(formData.start_date, formData.end_date);
+  const total = calcularTotal(formData.start_date, formData.end_date, room.price);
 
   return (
     <Layout>
