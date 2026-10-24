@@ -3,6 +3,7 @@ import {
   calcularTotal,
   validarFechas,
   misReservas,
+  etiquetaDeReserva,
   ERROR_FECHAS_OBLIGATORIAS,
   ERROR_SALIDA_NO_POSTERIOR,
 } from './reservas';
@@ -62,5 +63,19 @@ describe('misReservas', () => {
     const traer = vi.fn().mockResolvedValue({ reservations: null });
 
     expect(await misReservas('7', traer)).toEqual([]);
+  });
+});
+
+describe('etiquetaDeReserva', () => {
+  const hoy = '2026-11-15';
+
+  it.each([
+    ['Cancelada', { status: 'canceled', start_date: '2026-11-20', end_date: '2026-11-22' }],
+    ['Sin fechas', { status: 'active', start_date: '', end_date: '' }],
+    ['Próxima', { status: 'active', start_date: '2026-11-20', end_date: '2026-11-22' }],
+    ['En curso', { status: 'active', start_date: '2026-11-14', end_date: '2026-11-16' }],
+    ['Finalizada', { status: 'active', start_date: '2026-11-10', end_date: '2026-11-15' }],
+  ] as const)('muestra %s', (esperada, reserva) => {
+    expect(etiquetaDeReserva(reserva, hoy)).toBe(esperada);
   });
 });
