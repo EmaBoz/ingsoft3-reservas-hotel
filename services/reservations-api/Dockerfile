@@ -9,6 +9,10 @@ COPY . .
 RUN go mod tidy
 RUN CGO_ENABLED=0 GOOS=linux go build -o reservations-api ./cmd/server
 
+# ===== test (parte del build: ya tiene Go y el código) =====
+FROM builder AS test
+ENTRYPOINT ["sh", "coverage.sh"]
+
 # ===== runtime =====
 FROM alpine:latest
 WORKDIR /app
