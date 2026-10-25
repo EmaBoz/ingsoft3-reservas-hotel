@@ -15,6 +15,9 @@ import (
 	"rooms-api/utils"
 
 	"github.com/gin-gonic/gin"
+
+	"github.com/getsentry/sentry-go"
+	sentrygin "github.com/getsentry/sentry-go/gin"
 )
 
 func getEnv(key, fallback string) string {
@@ -25,6 +28,18 @@ func getEnv(key, fallback string) string {
 }
 
 func main() {
+	// Sentry: sólo se prende si el entorno trae SENTRY_DSN (en PROD).
+	// Sin la variable, la librería queda apagada y la api anda igual.
+	if err := sentry.Init(sentry.ClientOptions{
+		Dsn:              os.Getenv("SENTRY_DSN"),
+		ServerName:       "rooms-api",
+		EnableTracing:    true,
+		TracesSampleRate: 1.0,
+	}); err != nil {
+		log.Printf("Sentry no se pudo iniciar: %v", err)
+	}
+	defer sentry.Flush(2 * time.Second)
+
 	// Initialize MySQL connection
 	db := config.InitMySQL()
 
@@ -99,6 +114,7 @@ func main() {
 
 	// Setup Gin router
 	r := gin.Default()
+	r.Use(sentrygin.New(sentrygin.Options{Repanic: true})) // mide cada pedido y captura los panics
 
 	// CORS middleware
 	r.Use(func(c *gin.Context) {
@@ -124,6 +140,11 @@ func main() {
 	}
 	r.GET("/health", health)
 	r.HEAD("/health", health)
+
+	// TEMPORAL (TP9): un error a propósito para verlo llegar a Sentry. Se saca al terminar.
+	r.GET("/api/falla", func(c *gin.Context) {
+		panic("Falla de prueba del TP9")
+	})
 
 	// API routes
 	api := r.Group("/api/v1")

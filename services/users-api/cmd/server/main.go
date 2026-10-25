@@ -12,6 +12,9 @@ import (
 	"users-api/services"
 
 	"github.com/gin-gonic/gin"
+
+	"github.com/getsentry/sentry-go"
+	sentrygin "github.com/getsentry/sentry-go/gin"
 )
 
 // getenv lee una variable de entorno con un valor por defecto si no está seteada.
@@ -23,6 +26,18 @@ func getenv(key, def string) string {
 }
 
 func main() {
+	// Sentry: sólo se prende si el entorno trae SENTRY_DSN (en PROD).
+	// Sin la variable, la librería queda apagada y la api anda igual.
+	if err := sentry.Init(sentry.ClientOptions{
+		Dsn:              os.Getenv("SENTRY_DSN"),
+		ServerName:       "users-api",
+		EnableTracing:    true,
+		TracesSampleRate: 1.0,
+	}); err != nil {
+		log.Printf("Sentry no se pudo iniciar: %v", err)
+	}
+	defer sentry.Flush(2 * time.Second)
+
 	// DB
 	db := config.InitDatabase()
 
@@ -41,6 +56,7 @@ func main() {
 
 	// HTTP
 	r := gin.Default()
+	r.Use(sentrygin.New(sentrygin.Options{Repanic: true})) // mide cada pedido y captura los panics
 
 	// CORS middleware
 	r.Use(func(c *gin.Context) {

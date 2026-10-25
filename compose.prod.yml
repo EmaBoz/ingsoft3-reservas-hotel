@@ -7,6 +7,8 @@
 #  - volúmenes propios del entorno (_prod)
 #  - sólo se publican al host el front y las 4 apis (PROD: 3200 y 8281-8284)
 #  - las contraseñas y el JWT vienen de los secrets del environment production
+#  - (TP9) las apis mandan errores y tiempos a Sentry: SENTRY_DSN llega del
+#    environment production (en QA no se pasa y la librería queda apagada)
 name: prod
 
 services:
@@ -105,6 +107,7 @@ services:
       - MEMCACHED_HOST=memcached
       - MEMCACHED_PORT=11211
       - MEMCACHED_TTL=600
+      - SENTRY_DSN=${SENTRY_DSN:-}
     depends_on:
       mysql-users:
         condition: service_healthy
@@ -136,6 +139,7 @@ services:
       - MEMCACHED_PORT=11211
       - MEMCACHED_TTL=300
       - SEARCH_API_BASE_URL=http://search-api:8083
+      - SENTRY_DSN=${SENTRY_DSN:-}
     ports:
       - "8282:8080"
 
@@ -151,6 +155,7 @@ services:
       MONGO_URI: "mongodb://root:${DB_PASSWORD:?falta DB_PASSWORD}@mongodb:27017/?authSource=admin"
       MONGO_DB_NAME: "mongodb"
       RABBITMQ_URL: "amqp://reservas:${DB_PASSWORD}@rabbitmq:5672/"
+      SENTRY_DSN: "${SENTRY_DSN:-}"
     ports:
       - "8283:8080"
 
@@ -176,6 +181,7 @@ services:
       - JWT_SECRET=${JWT_SECRET:?falta JWT_SECRET}
       - PORT=8083
       - GIN_MODE=release
+      - SENTRY_DSN=${SENTRY_DSN:-}
     ports:
       - "8284:8083"
     healthcheck:
