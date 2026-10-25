@@ -19,7 +19,7 @@ jobs:
         run: echo "Rama $RAMA · commit $GITHUB_SHA"
 
       - name: Bajar el código al runner
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Preparar el constructor que sabe cachear
         uses: docker/setup-buildx-action@v4
@@ -53,7 +53,7 @@ jobs:
         run: echo "Rama $RAMA · commit $GITHUB_SHA"
 
       - name: Bajar el código al runner
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Preparar el constructor que sabe cachear
         uses: docker/setup-buildx-action@v4
@@ -87,7 +87,7 @@ jobs:
         run: echo "Rama $RAMA · commit $GITHUB_SHA"
 
       - name: Bajar el código al runner
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Preparar el constructor que sabe cachear
         uses: docker/setup-buildx-action@v4
@@ -160,7 +160,7 @@ jobs:
         run: echo "Rama $RAMA · commit $GITHUB_SHA"
 
       - name: Bajar el código al runner
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Preparar el constructor que sabe cachear
         uses: docker/setup-buildx-action@v4
@@ -194,7 +194,7 @@ jobs:
         run: echo "Rama $RAMA · commit $GITHUB_SHA"
 
       - name: Bajar el código al runner
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Preparar el constructor que sabe cachear
         uses: docker/setup-buildx-action@v4
@@ -263,7 +263,7 @@ jobs:
       JWT_SECRET: ${{ secrets.JWT_SECRET }}
     steps:
       - name: Bajar el commit verificado
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Desplegar en QA la imagen del commit
         shell: bash
@@ -299,7 +299,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Bajar el código
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Preparar Node
         uses: actions/setup-node@v6
@@ -332,7 +332,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Bajar el código
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Preparar Node
         uses: actions/setup-node@v6
@@ -384,7 +384,7 @@ jobs:
       SENTRY_DSN: ${{ vars.SENTRY_DSN }}        # variable (no secret) del environment production
     steps:
       - name: Bajar el commit aprobado
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Desplegar en PROD la MISMA imagen que verificó QA
         shell: bash
