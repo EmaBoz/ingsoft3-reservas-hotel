@@ -125,7 +125,7 @@ jobs:
           } >> $GITHUB_STEP_SUMMARY
 
       - name: Publicar el coverage de reservations-api
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:
           name: coverage-reservations-api
@@ -230,7 +230,7 @@ jobs:
           " >> $GITHUB_STEP_SUMMARY
 
       - name: Publicar el coverage del frontend
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:
           name: coverage-frontend
@@ -319,7 +319,7 @@ jobs:
         run: npx playwright test e2e/api.spec.js
 
       - name: Publicar reporte de integración
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:
           name: playwright-report-integracion
@@ -364,7 +364,7 @@ jobs:
         run: npx playwright test e2e/reservas.spec.js
 
       - name: Publicar reporte e2e
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:
           name: playwright-report-e2e
