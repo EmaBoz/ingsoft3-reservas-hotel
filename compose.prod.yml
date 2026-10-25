@@ -1,5 +1,7 @@
 # Entorno PROD (fallback local del TP6): lo levanta el job deploy-prod en el
 # self-hosted runner. Es el docker-compose.yml del TP2 con estos cambios:
+#  - (TP7) los 5 servicios propios usan la imagen del registry con la
+#    etiqueta sha-<commit> que les pasa el pipeline (IMAGE_TAG), no build:
 #  - name: prod, para que sea un proyecto aparte del de QA
 #  - sin container_name (si no, QA y PROD chocan)
 #  - volúmenes propios del entorno (_prod)
@@ -92,7 +94,7 @@ services:
     command: memcached -m 64
 
   users-api:
-    build: ./services/users-api
+    image: ghcr.io/emaboz/ingsoft3-reservas-hotel-users-api:${IMAGE_TAG:?falta IMAGE_TAG}
     environment:
       - DB_HOST=mysql-users
       - DB_PORT=3306
@@ -113,7 +115,7 @@ services:
     restart: unless-stopped
 
   rooms-api:
-    build: ./services/rooms-api
+    image: ghcr.io/emaboz/ingsoft3-reservas-hotel-rooms-api:${IMAGE_TAG:?falta IMAGE_TAG}
     restart: always
     depends_on:
       mysql-rooms:
@@ -138,7 +140,7 @@ services:
       - "8282:8080"
 
   reservations-api:
-    build: ./services/reservations-api
+    image: ghcr.io/emaboz/ingsoft3-reservas-hotel-reservations-api:${IMAGE_TAG:?falta IMAGE_TAG}
     restart: always
     depends_on:
       mongodb:
@@ -153,7 +155,7 @@ services:
       - "8283:8080"
 
   search-api:
-    build: ./services/search-api
+    image: ghcr.io/emaboz/ingsoft3-reservas-hotel-search-api:${IMAGE_TAG:?falta IMAGE_TAG}
     restart: always
     depends_on:
       solr:
@@ -184,7 +186,7 @@ services:
       start_period: 20s
 
   frontend:
-    build: ./frontend
+    image: ghcr.io/emaboz/ingsoft3-reservas-hotel-frontend:${IMAGE_TAG:?falta IMAGE_TAG}
     restart: unless-stopped
     depends_on:
       - users-api

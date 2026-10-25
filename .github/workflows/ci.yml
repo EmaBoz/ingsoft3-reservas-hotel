@@ -265,9 +265,14 @@ jobs:
       - name: Bajar el commit verificado
         uses: actions/checkout@v6
 
-      - name: Levantar QA local
+      - name: Desplegar en QA la imagen del commit
         shell: bash
-        run: docker compose -f compose.qa.yml up -d --build
+        env:
+          IMAGE_TAG: sha-${{ github.sha }}         # la imagen que publicó ESTA corrida
+        run: |
+          echo "Imagen a desplegar: $IMAGE_TAG"
+          docker compose -f compose.qa.yml pull
+          docker compose -f compose.qa.yml up -d
 
       - name: Smoke test (espera a que QA conteste)
         shell: bash
@@ -302,9 +307,14 @@ jobs:
       - name: Bajar el commit aprobado
         uses: actions/checkout@v6
 
-      - name: Levantar PROD local
+      - name: Desplegar en PROD la MISMA imagen que verificó QA
         shell: bash
-        run: docker compose -f compose.prod.yml up -d --build
+        env:
+          IMAGE_TAG: sha-${{ github.sha }}
+        run: |
+          echo "Imagen a desplegar: $IMAGE_TAG"
+          docker compose -f compose.prod.yml pull
+          docker compose -f compose.prod.yml up -d
 
       - name: Smoke test PROD
         shell: bash
