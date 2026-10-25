@@ -158,6 +158,7 @@ export function MyReservations() {
                         size="sm"
                         disabled={cancelingId === reservation.id}
                         onClick={() => handleCancel(reservation.id)}
+                        aria-label={`Cancelar la reserva de la habitación ${reservation.room_id}`}
                       >
                         <X className="w-4 h-4 mr-1" />
                         {cancelingId === reservation.id ? 'Cancelando...' : 'Cancelar'}

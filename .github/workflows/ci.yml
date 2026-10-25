@@ -293,9 +293,87 @@ jobs:
           done
           echo "❌ QA no respondió a tiempo"; exit 1
 
+  integracion:
+    runs-on: self-hosted
+    needs: deploy-qa                            # QA ya ejecuta la imagen de ESTA corrida
+    timeout-minutes: 15
+    steps:
+      - name: Bajar el código
+        uses: actions/checkout@v6
+
+      - name: Preparar Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Instalar dependencias (sin navegador)
+        shell: bash
+        working-directory: ./frontend
+        run: npm ci
+
+      - name: Integración contra la api de reservas de QA
+        shell: bash
+        working-directory: ./frontend
+        env:
+          API_BASE_URL: http://localhost:8183      # reservations-api de QA (la api, no el front)
+        run: npx playwright test e2e/api.spec.js
+
+      - name: Publicar reporte de integración
+        uses: actions/upload-artifact@v6
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report-integracion
+          path: frontend/playwright-report
+          retention-days: 7
+
+  e2e:
+    runs-on: self-hosted
+    needs: integracion                          # si la api está rota, no gastamos un navegador
+    timeout-minutes: 20
+    steps:
+      - name: Bajar el código
+        uses: actions/checkout@v6
+
+      - name: Preparar Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Instalar dependencias y el navegador
+        shell: bash
+        working-directory: ./frontend
+        run: |
+          npm ci
+          npx playwright install chromium
+
+      - name: Usuario de prueba en QA (si ya existe, queda igual)
+        shell: bash
+        env:
+          E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}
+        run: |
+          curl -s -o /dev/null -X POST http://localhost:8181/users -H 'Content-Type: application/json' \
+            -d "{\"username\":\"e2e-admin\",\"email\":\"e2e-admin@hotel.test\",\"password\":\"$E2E_PASSWORD\",\"first_name\":\"E2E\",\"last_name\":\"Admin\"}"
+          docker exec qa-mysql-users-1 sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" usersdb -e "UPDATE users SET role=\"admin\" WHERE username=\"e2e-admin\""'
+
+      - name: e2e contra QA
+        shell: bash
+        working-directory: ./frontend
+        env:
+          E2E_BASE_URL: http://localhost:3100      # el front de QA
+          E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}
+        run: npx playwright test e2e/reservas.spec.js
+
+      - name: Publicar reporte e2e
+        uses: actions/upload-artifact@v6
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report-e2e
+          path: frontend/playwright-report
+          retention-days: 7
+
   deploy-prod:
     runs-on: self-hosted
-    needs: deploy-qa                            # PROD sólo después de QA vivo (y por eso sólo en main)
+    needs: e2e                                  # el gate: sin e2e verde ni se pide aprobación
     environment: production                     # acá la corrida se pausa hasta que alguien apruebe
     concurrency:
       group: deploy-prod

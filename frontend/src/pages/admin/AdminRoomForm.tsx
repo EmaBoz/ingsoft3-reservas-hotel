@@ -139,7 +139,7 @@ export default function AdminRoomForm() {
                 </h1>
 
                 {error && (
-                    <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-6">
+                    <div role="alert" className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-6">
                         {error}
                     </div>
                 )}
@@ -147,11 +147,12 @@ export default function AdminRoomForm() {
                 <form onSubmit={handleSubmit} className="space-y-6">
                     {/* Room Number */}
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                        <label htmlFor="number" className="block text-sm font-medium text-gray-700 mb-2">
                             Número de Habitación *
                         </label>
                         <input
                             type="text"
+                            id="number"
                             name="number"
                             value={formData.number}
                             onChange={handleChange}
@@ -163,10 +164,11 @@ export default function AdminRoomForm() {
 
                     {/* Room Type */}
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                        <label htmlFor="type" className="block text-sm font-medium text-gray-700 mb-2">
                             Tipo de Habitación *
                         </label>
                         <select
+                            id="type"
                             name="type"
                             value={formData.type}
                             onChange={handleChange}
@@ -184,11 +186,12 @@ export default function AdminRoomForm() {
                     {/* Price and Capacity */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                            <label htmlFor="price" className="block text-sm font-medium text-gray-700 mb-2">
                                 Precio por Noche ($) *
                             </label>
                             <input
                                 type="number"
+                                id="price"
                                 name="price"
                                 value={formData.price}
                                 onChange={handleChange}
@@ -201,11 +204,12 @@ export default function AdminRoomForm() {
                         </div>
 
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                            <label htmlFor="capacity" className="block text-sm font-medium text-gray-700 mb-2">
                                 Capacidad (Huéspedes) *
                             </label>
                             <input
                                 type="number"
+                                id="capacity"
                                 name="capacity"
                                 value={formData.capacity}
                                 onChange={handleChange}
@@ -219,11 +223,12 @@ export default function AdminRoomForm() {
 
                     {/* Floor */}
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                        <label htmlFor="floor" className="block text-sm font-medium text-gray-700 mb-2">
                             Piso *
                         </label>
                         <input
                             type="number"
+                            id="floor"
                             name="floor"
                             value={formData.floor}
                             onChange={handleChange}
@@ -236,10 +241,11 @@ export default function AdminRoomForm() {
 
                     {/* Description */}
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                        <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-2">
                             Descripción
                         </label>
                         <textarea
+                            id="description"
                             name="description"
                             value={formData.description}
                             onChange={handleChange}
