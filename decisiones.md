@@ -34,6 +34,31 @@ docker pull ghcr.io/emaboz/ingsoft3-reservas-hotel-frontend:sha-eb2a449ae1914863
 | **QA** | http://localhost:3100 | :8181 | :8182 | :8183 | :8184 |
 | **PROD** | http://localhost:3200 | :8281 | :8282 | :8283 | :8284 |
 
+## Enlaces del TP7
+
+**Paquetes públicos**: los mismos cinco de arriba. La imagen que está en PROD (release `v7.0.0`)
+es `sha-46a16746949afa5379e5ed213fe118dda4f61985`, la misma etiqueta en los cinco:
+
+```bash
+docker pull ghcr.io/emaboz/ingsoft3-reservas-hotel-reservations-api:sha-46a16746949afa5379e5ed213fe118dda4f61985
+docker pull ghcr.io/emaboz/ingsoft3-reservas-hotel-frontend:sha-46a16746949afa5379e5ed213fe118dda4f61985
+```
+
+**La corrida donde la integración quedó VERDE y la e2e ROJA** (la promoción a PROD no arrancó):
+
+- Commit que rompió la app (cambia el texto del botón de reserva, no toca `e2e/`):
+  https://github.com/EmaBoz/ingsoft3-reservas-hotel/commit/6eb2b16e937941afea42bb4b81284ba767fc8fdd
+- Corrida: https://github.com/EmaBoz/ingsoft3-reservas-hotel/actions/runs/40158434089
+- Reporte de integración (verde), `playwright-report-integracion`:
+  https://github.com/EmaBoz/ingsoft3-reservas-hotel/actions/runs/40158434089/artifacts/12584733492
+- Reporte e2e (rojo, con captura y traza), `playwright-report-e2e`:
+  https://github.com/EmaBoz/ingsoft3-reservas-hotel/actions/runs/40158434089/artifacts/12585144422
+
+**La corrida completa en verde después del arreglo, hasta PROD** (aprobada):
+https://github.com/EmaBoz/ingsoft3-reservas-hotel/actions/runs/40158930947
+
+**URLs de QA y PROD**: las de la tabla de arriba (fallback local).
+
 ---
 
 # Decisiones — TP1 (Git colaborativo)
@@ -756,3 +781,182 @@ y comprobé que un dato creado en PROD no aparece en QA. Entre el merge y PROD p
 builds (tests y publicación) → `deploy-qa` en mi runner con los secrets de `qa` y su smoke → pausa
 del environment `production` hasta que apruebo → `deploy-prod` con los secrets de `production` y su
 smoke.
+
+---
+
+## TP7 — Contenedores en el pipeline + integración y e2e
+
+> Los enlaces del TP7 (paquetes, la corrida verde/roja con sus dos reportes y la corrida completa
+> hasta PROD) están arriba de todo, en "Enlaces del TP7".
+
+### Build once, deploy many
+
+En el TP6 cada entorno hacía `docker compose up --build`: el runner construía las cinco imágenes
+para QA, y después las volvía a construir para PROD. Mis Dockerfiles usan `alpine:latest` y
+`nginx:alpine` en la etapa final: si entre el deploy de QA y la aprobación de PROD salía una versión
+nueva de alpine, PROD corría algo que nadie probó, con el mismo commit. Ahora el pipeline construye
+cada imagen **una vez** (en el job de build, después de los tests), la publica con su commit, y QA y
+PROD **ejecutan esa imagen**: `compose.qa.yml` y `compose.prod.yml` tienen
+`image: ghcr.io/emaboz/ingsoft3-reservas-hotel-<servicio>:${IMAGE_TAG:?falta IMAGE_TAG}` en vez de
+`build:`, y los deploys hacen `docker compose pull` + `up -d` con `IMAGE_TAG=sha-<commit>`. Si falta
+la etiqueta, compose se niega en vez de inventar una.
+
+### Etiquetas: `sha-<commit>` en el registry, `v7.0.0` en git, y nada de `latest`
+
+- `sha-<commit>` dice **de qué commit salió** cada imagen, y es la que se promueve: el log de
+  `deploy-qa` y el de `deploy-prod` muestran la misma (`Imagen a desplegar: sha-46a1674…`).
+- `v7.0.0` es el **nombre** de la versión que anduvo en PROD; apunta a un commit, no a una imagen.
+- **No publico `latest`** porque no dice qué hay detrás: un deploy que lo usara correría "lo último
+  que se publicó", haya pasado las pruebas o no, y después no podría decir qué desplegué.
+- En el fallback no hay "imagen configurada en el servicio" como en Render: los compose no tienen
+  ninguna etiqueta fija, la recibe cada corrida en `IMAGE_TAG`. No creé servicios nuevos: los mismos
+  proyectos `qa` y `prod` cambiaron de `build:` a `image:`.
+- Lo que una etiqueta **no** garantiza: alguien con permiso de escritura puede volver a publicar
+  `sha-<commit>` con otro contenido (por ejemplo re-corriendo una corrida vieja). Lo único que no se
+  mueve es el digest (`@sha256:…`).
+
+### Del tag a la imagen
+
+```bash
+git rev-list -n1 v7.0.0      # 46a16746949afa5379e5ed213fe118dda4f61985
+docker pull ghcr.io/emaboz/ingsoft3-reservas-hotel-frontend:sha-46a16746949afa5379e5ed213fe118dda4f61985
+```
+
+El tag va sobre el commit que dice *Deployments* → `production`, no sobre el último de `main`:
+entre la aprobación y el tag podría haber entrado otro merge que nunca llegó a PROD.
+
+### Cómo compruebo que el entorno ejecuta mi imagen
+
+En el fallback, lo que en Render son los *Events* del servicio es esto:
+
+- en el log del deploy se ve el `pull` de las imágenes con la etiqueta `sha-…` de esa corrida;
+- `docker ps --filter name=qa-` (o `prod-`) muestra en la columna IMAGE
+  `ghcr.io/emaboz/ingsoft3-reservas-hotel-<servicio>:sha-<commit>`, la misma etiqueta que está en
+  los paquetes. Si alguien hubiera hecho un `docker compose up` a mano, no habría corrida que lo
+  respalde en *Actions*.
+
+El smoke no alcanza para esto: pregunta si la app **responde**, no **qué versión** responde. Si el
+`up` no hubiera cambiado algún contenedor, el smoke daría verde contra la versión vieja. Cerrarlo del
+todo sería que `/health` devuelva el commit de la imagen y que el smoke lo compare (TP7 §2.4: se
+estudia, no se implementa).
+
+### Qué probé en integración y qué en e2e
+
+**Integración** (`e2e/api.spec.js`, Playwright con `request`, sin navegador y sin dobles) contra
+`reservations-api` de QA (`localhost:8183`) y su Mongo de verdad:
+
+1. alta → la base la devuelve en "mis reservas" como `active` → cancelación → queda `canceled`
+   (en mi app "borrar" una reserva es cancelarla: es un soft delete);
+2. alta sin fecha de entrada → `400` y el usuario no tiene ninguna reserva;
+3. **(elegida)** una reserva que pisa las fechas de otra en la misma habitación → `409`. La elegí
+   porque es justo lo que en el TP5 dejé afuera de la cobertura: la consulta de superposición vive en
+   el repositorio de Mongo, y un unit test con doble no la puede ver. Si se rompe, dos personas
+   reservan la misma habitación; me escribe el que llega al hotel y no tiene cuarto.
+
+**e2e** (`e2e/reservas.spec.js`, navegador contra el front de QA, `localhost:3100`):
+
+1. **creación**: un admin crea una habitación desde el formulario, la ve en el listado, la elimina y
+   ya no está;
+2. **validación**: crear una habitación con un número que ya existe → el usuario ve el error y en el
+   listado sigue habiendo una sola;
+3. **(elegido) el flujo de todos los días**: un usuario reserva una habitación, la ve en "Mis
+   reservas" y la cancela. Es lo que hace un huésped; si no anda, nadie puede reservar.
+
+Cada prueba se fabrica datos que no se repiten (`E2E<hora>` como número de habitación, un usuario y
+una habitación inventados en la integración) y limpia lo que crea comprobándolo (la habitación
+borrada da `404`, la reserva queda `canceled`).
+
+**Qué no puse en cada suite (la pirámide):** en e2e no puse las reglas de fechas ni el cálculo del
+total: eso ya lo cubren los unitarios del TP5 en milisegundos; la e2e cuesta minutos y sólo tiene que
+probar que las piezas se hablan. En integración no puse `users-api`, `rooms-api` ni `search-api`: me
+quedé con la api donde está la regla que más duele. Tampoco puse casos de borde de validación: esos
+son del unitario.
+
+### El par verde/rojo de mi corrida roja
+
+Rompí **el front**: el botón de la pantalla de reserva pasó de "Confirmar Reserva" a "Reservar"
+(commit `6eb2b16`, toca sólo `ReserveRoom.tsx`). Ningún unitario lo mira, así que el build pasó.
+En la cadena: smoke **verde** (la app respondía), integración **verde**, e2e **roja** en el flujo de
+reserva (los otros dos flujos pasaron), y `deploy-prod` **salteado**: ni siquiera pidió aprobación.
+
+Leído contra la tabla de §2.5: integración verde quiere decir que la api de reservas y su base
+están bien (le hablé directo y guardó, rechazó y canceló como tiene que hacerlo); e2e roja quiere
+decir que **el front no está usando bien la app**. Lo confirmé con el reporte rojo, sin abrir el
+código: en la captura de la pantalla de reserva hay un botón "Reservar", y el test esperaba
+"Confirmar Reserva". Si hubiera roto la api, la integración se habría puesto roja y la e2e no habría
+llegado a correr (su `needs` no se cumple). Lo que no pasó gracias al gate: esa versión no llegó a
+PROD sin que nadie la verificara. En este caso el cambio era inofensivo para el huésped (el botón
+seguía funcionando, con otro texto), y eso también me dice algo: mi e2e está atada al texto del
+botón, que es lo que ve el usuario; si algún día se cambia a propósito, el test se cambia en el
+mismo PR. Un bug que este gate **no** ataja: algo que rompa un flujo que no está entre mis tres (por
+ejemplo la búsqueda), o algo que sólo pasa con los datos de PROD.
+
+El arreglo (PR #34) volvió el texto y la cadena completa quedó verde hasta PROD, con la misma imagen
+en QA y en PROD.
+
+### Integración amplia (contra QA) y no estrecha
+
+Mi integración le habla a la api **ya desplegada** en QA. La otra forma era la estrecha: levantar
+`reservations-api` y un Mongo descartable dentro del job (`services:`), sin deploy. Lo que gano con la
+amplia: prueba además que el despliegue quedó bien (la imagen de esta corrida, con su configuración
+y su red), y no tengo que armar Mongo + RabbitMQ en el pipeline (sin RabbitMQ la api no arranca). Lo
+que pierdo: llega más tarde (después del deploy), comparte la base de QA con todo lo demás, y si
+falla puede ser por QA y no por el código.
+
+### Cold start, flaky y cómo no los fabrico
+
+En el fallback no hay cold start como en Render (los contenedores no se duermen), pero sí hay
+arranque: después del `up`, MySQL, RabbitMQ y Solr tardan. Lo maneja el smoke con reintentos, que
+corre antes de las suites. En Playwright: `timeout` de 60 s por test, 15 s por aserción y por acción,
+**un** reintento (si un test pasa recién ahí, el reporte lo marca *flaky*), y `workers: 1` porque las
+dos suites comparten la base de QA. Nada de `sleep`: Playwright espera solo a que aparezca lo que
+busca.
+
+Un test flaky es el que a veces pasa y a veces falla con el mismo código. Es peor que no tener test
+porque enseña a ignorar el rojo (me pasó en el TP5 con la cobertura). Antes de subir corrí las e2e
+tres veces seguidas contra QA: 3 de 3 en verde.
+
+### La misma imagen del front en QA y en PROD
+
+Adentro de la imagen quedan los estáticos y la plantilla de nginx; la dirección de cada api y el DNS
+se leen al arrancar (`USERS_API_URL`, `ROOMS_API_URL`, `RESERVATIONS_API_URL`, `SEARCH_API_URL`,
+`DNS_RESOLVER`). Por eso QA y PROD corren exactamente `ingsoft3-reservas-hotel-frontend:sha-…` con
+la misma etiqueta, y cada una le habla a las apis de su propio proyecto de Compose.
+
+### Límite conocido: QA es uno solo
+
+Con dos merges seguidos, la corrida B puede redesplegar QA mientras la integración o la e2e de la A
+están corriendo, y la A estaría probando la imagen de B. Lo reconocería mirando en *Actions* a qué
+hora corrió el `deploy-qa` de B y comparándolo con las suites de A, o con `docker ps` (qué etiqueta
+tiene QA). Qué hago: rechazo la corrida A con su motivo y apruebo la B, que trae los dos cambios.
+Por eso hago un merge por vez. Lo que lo resolvería de verdad es un entorno por corrida.
+
+### Problemas encontrados
+
+- **La e2e no encontraba el login**: abrir `/login` directo en el navegador da el 404 de
+  `users-api`, porque nginx manda todo `/login` a la api (es la ruta del `POST /login`). Un usuario
+  entra por `/` y la app lo redirige al login del lado del cliente, así que el test hace lo mismo. Es
+  un choque de rutas que ya tenía la app.
+- **La limpieza no corría cuando el test se colgaba**: en la corrida roja el clic esperó el minuto
+  entero del test, el contexto se cerró y el `finally` que borra la habitación falló; el error que se
+  veía era el de la limpieza y no el real. Quedaron 8 habitaciones `E2E…` en QA (6 de mis primeras
+  pruebas locales y 2 de la corrida roja). Las borré por la api y en el arreglo puse
+  `actionTimeout: 15_000`: el clic falla a los 15 s con su error y la limpieza alcanza a correr.
+- **No hay forma de crear un admin por la api**: el rol se cambia en la base. El job de e2e crea el
+  usuario `e2e-admin` en QA (si ya existe, no pasa nada) y le pone el rol con un `docker exec` a
+  MySQL de QA; la contraseña está en el secret `E2E_PASSWORD`.
+- **El compose de desarrollo de otra carpeta** ocupaba los nombres de contenedor, así que para probar
+  las e2e en mi máquina levanté mi front nuevo suelto en la red de QA (`--network qa_default`, puerto
+  3999), sin tocar lo que había desplegado el pipeline.
+
+### Declaración de uso de IA
+
+Usé Claude Code (Claude Opus 5.5) para escribir las dos suites, la config de Playwright, los cambios
+de accesibilidad, los jobs nuevos del `ci.yml` y este texto, siguiendo la guía del TP7. Decisiones
+mías: qué tercera prueba y qué tercer flujo elegir, romper el texto del botón, y las aprobaciones de
+PROD. Cómo lo verifiqué: corrí las dos suites contra QA en mi máquina antes de subirlas (las e2e
+tres veces), miré que en la corrida roja la integración quedara verde y la e2e roja, bajé los dos
+reportes y diagnostiqué con la captura, y comprobé con `docker ps` que QA y PROD corren la misma
+etiqueta. Qué verifica cada test y contra qué corre: está en "Qué probé en integración y qué en
+e2e"; si una prueba falla, `deploy-prod` no arranca y en la corrida queda el reporte para ver por qué.
+
