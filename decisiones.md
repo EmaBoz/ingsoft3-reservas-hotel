@@ -960,3 +960,26 @@ reportes y diagnostiqué con la captura, y comprobé con `docker ps` que QA y PR
 etiqueta. Qué verifica cada test y contra qué corre: está en "Qué probé en integración y qué en
 e2e"; si una prueba falla, `deploy-prod` no arranca y en la corrida queda el reporte para ver por qué.
 
+---
+
+## TP8 — Infraestructura como código
+
+- **Riel y versiones:** plan C (TP8 §3.7), porque QA y PROD ya corren en el fallback local:
+  Terraform (`required_version >= 1.5`, uso 1.16.6) con el provider `kreuzwerker/docker`
+  `~> 4.0`, que el `.terraform.lock.hcl` fija en **4.6.0**. `infra/` declara `preprod` como la app
+  completa (las 4 apis y el front con la imagen `sha-…` del TP7, MySQL ×2, Mongo, RabbitMQ, Solr y
+  Memcached) con su propia red, volúmenes y puertos (front 3300, apis 8381-8384). El estado está
+  afuera del repo (`$HOME/tfstate/reservas-preprod.tfstate`) y las claves en `local.tfvars`
+  (ignorado por git).
+- **Problemas:** el primer `destroy` intentó borrar también las imágenes de Docker (`mysql:8.0`, las
+  `sha-…`), que son las mismas que usan QA y PROD: Docker se negó porque estaban en uso y el destroy
+  terminó con error. Lo arreglé con `keep_locally = true` en los `docker_image`, así preprod las suelta
+  del estado sin borrarlas. Otro: `depends_on` sólo espera que la base se *cree*, así que puse
+  `healthcheck` + `wait = true` en las bases, la cola y Solr, y `restart` en las apis. Y en
+  PowerShell `-var-file=local.tfvars` se parte en dos argumentos, por eso corro Terraform desde Git
+  Bash.
+- **IA:** Claude Code (Claude Opus 5.5) escribió el HCL y corrió los `plan`/`apply`/`destroy` conmigo
+  mirando cada plan; lo verifiqué con la segunda pasada en "No changes", un drift (borré a mano
+  `reservations-api` de preprod: el plan dijo `1 to add` y el apply lo repuso), `prevent_destroy`
+  frenando el destroy, y `destroy → apply` dos veces con preprod respondiendo y QA y PROD intactos.
+

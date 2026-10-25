@@ -1,0 +1,7 @@
+# Lo que NO se versiona de Terraform:
+# el estado (tiene las contraseñas en texto plano), los providers descargados
+# y los archivos de variables (local.tfvars tiene los secretos)
+*.tfstate
+*.tfstate.*
+.terraform/
+*.tfvars
