@@ -25,3 +25,7 @@ dist-ssr
 
 # reporte de coverage de vitest
 coverage
+
+# reportes de Playwright
+playwright-report/
+test-results/

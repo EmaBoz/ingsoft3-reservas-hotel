@@ -376,6 +376,7 @@ export default function AdminRoomList() {
                                             </Link>
                                             <button
                                                 onClick={() => setDeleteModal({ show: true, roomId: room.id })}
+                                                aria-label={`Eliminar la habitación ${room.number}`}
                                                 className="text-red-600 hover:text-red-900"
                                             >
                                                 Eliminar
@@ -392,7 +393,7 @@ export default function AdminRoomList() {
                 {/* Delete Confirmation Modal */}
                 {deleteModal.show && (
                     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                        <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+                        <div role="dialog" aria-label="Confirmar eliminación" className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
                             <h3 className="text-lg font-semibold mb-4">Confirmar</h3>
                             <p className="text-gray-600 mb-6">
                                 ¿Estás seguro de que deseas eliminar esta habitación? Esta acción no se puede deshacer.
