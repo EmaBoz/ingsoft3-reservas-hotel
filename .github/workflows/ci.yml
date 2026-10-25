@@ -381,6 +381,7 @@ jobs:
     env:
       DB_PASSWORD: ${{ secrets.DB_PASSWORD }}   # secrets del environment production
       JWT_SECRET: ${{ secrets.JWT_SECRET }}
+      SENTRY_DSN: ${{ vars.SENTRY_DSN }}        # variable (no secret) del environment production
     steps:
       - name: Bajar el commit aprobado
         uses: actions/checkout@v6

@@ -9,9 +9,26 @@ import (
 	"reservations-api/services"
 
 	"github.com/gin-gonic/gin"
+	"os"
+	"time"
+
+	"github.com/getsentry/sentry-go"
+	sentrygin "github.com/getsentry/sentry-go/gin"
 )
 
 func main() {
+	// Sentry: sólo se prende si el entorno trae SENTRY_DSN (en PROD).
+	// Sin la variable, la librería queda apagada y la api anda igual.
+	if err := sentry.Init(sentry.ClientOptions{
+		Dsn:              os.Getenv("SENTRY_DSN"),
+		ServerName:       "reservations-api",
+		EnableTracing:    true,
+		TracesSampleRate: 1.0,
+	}); err != nil {
+		log.Printf("Sentry no se pudo iniciar: %v", err)
+	}
+	defer sentry.Flush(2 * time.Second)
+
 	// Inicializar base de datos MongoDB
 	db := config.InitDatabase()
 	if db == nil {
@@ -38,6 +55,7 @@ func main() {
 	reservationController := controllers.NewReservationController(reservationService)
 	// Configurar router
 	router := gin.Default()
+	router.Use(sentrygin.New(sentrygin.Options{Repanic: true})) // mide cada pedido y captura los panics
 	// --- ACA agregás el health check ---
 	router.POST("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{

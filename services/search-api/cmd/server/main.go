@@ -13,10 +13,26 @@ import (
 	"search-api/services"
 
 	"github.com/gin-gonic/gin"
+	"time"
+
+	"github.com/getsentry/sentry-go"
+	sentrygin "github.com/getsentry/sentry-go/gin"
 )
 
 func main() {
 	log.Println("Starting search-api...")
+
+	// Sentry: sólo se prende si el entorno trae SENTRY_DSN (en PROD).
+	// Sin la variable, la librería queda apagada y la api anda igual.
+	if err := sentry.Init(sentry.ClientOptions{
+		Dsn:              os.Getenv("SENTRY_DSN"),
+		ServerName:       "search-api",
+		EnableTracing:    true,
+		TracesSampleRate: 1.0,
+	}); err != nil {
+		log.Printf("Sentry no se pudo iniciar: %v", err)
+	}
+	defer sentry.Flush(2 * time.Second)
 
 	// Cargar configuraciones
 	solrConfig := config.NewSolrConfig()
@@ -70,6 +86,7 @@ func main() {
 	}
 
 	router := gin.Default()
+	router.Use(sentrygin.New(sentrygin.Options{Repanic: true})) // mide cada pedido y captura los panics
 
 	// Middleware de CORS
 	router.Use(corsMiddleware())
