@@ -227,7 +227,7 @@ export function ReserveRoom() {
                     fullWidth
                     disabled={isSubmitting || nights <= 0 || success}
                   >
-                    {isSubmitting ? 'Procesando...' : 'Reservar'}
+                    {isSubmitting ? 'Procesando...' : 'Confirmar Reserva'}
                   </Button>
                   <Button
                     type="button"
