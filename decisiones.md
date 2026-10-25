@@ -983,3 +983,37 @@ e2e"; si una prueba falla, `deploy-prod` no arranca y en la corrida queda el rep
   `reservations-api` de preprod: el plan dijo `1 to add` y el apply lo repuso), `prevent_destroy`
   frenando el destroy, y `destroy → apply` dos veces con preprod respondiendo y QA y PROD intactos.
 
+---
+
+## TP9 — DevSecOps + observabilidad
+
+- **El PR de Dependabot que mergeé:** el #49
+  (https://github.com/EmaBoz/ingsoft3-reservas-hotel/pull/49), `postcss` de 8.5.26 a 8.5.31 en el
+  frontend. Me animé porque es un *patch* (sólo cambia el último número), de una dependencia de
+  desarrollo que usa el build de Tailwind; sus notas son todos arreglos de bugs, sin cambios que
+  rompan nada; y el pipeline entero quedó en verde sobre ese PR (tests y cobertura, build de las 5
+  imágenes) y después, en su corrida de `main`, también QA, la integración y la e2e. Ese
+  verde es la red de todo el semestre. Dependabot está activo en `gomod` (los 4 servicios), `npm` y
+  `github-actions`, con alertas y actualizaciones de seguridad prendidas; CodeQL corre con la
+  configuración por defecto (Go, JS/TS y actions) y push protection está activa.
+- **El monitor y Sentry:** UptimeRobot sobre el `/health` de `rooms-api` de PROD (como PROD es
+  local, lo expuse con un túnel temporal de Cloudflare sólo para el ejercicio, y `/health` tuvo que
+  aceptar HEAD). Frené el servicio a las 12:11:09 y el aviso **DOWN** llegó a las 12:14 (**≈3 min**);
+  lo levanté a las 12:15:15 y el **UP** llegó a las 12:19 (≈4 min). Después pausé el monitor y cerré
+  el túnel. En Sentry, la operación **más usada** es `GET /api/search/rooms` (0,0555 pedidos/min en
+  24 h) y la **más lenta** es `GET /api/v1/rooms/available`, con **P95 de 18,57 ms**: `rooms-api` le
+  pide la lista a `search-api` por HTTP, así que son dos saltos. Con ese dato abrí la tarjeta
+  https://github.com/EmaBoz/ingsoft3-reservas-hotel/issues/56 en el tablero del TP3. El error de
+  prueba (`/api/falla`, "Falla de prueba del TP9") quedó en *Issues* y el endpoint ya lo saqué.
+- **Problemas e IA:** la última `sentry-go/gin` pide Go 1.25 y `go mod tidy` me subió el `go` de los
+  cuatro `go.mod`; fijé v0.31.1, la última compatible con Go 1.21 de mis Dockerfiles. QA y PROD son
+  los dos `localhost`, así que el `environment` del front es `host:puerto`. PROD no tenía
+  habitaciones (nunca se habían cargado): creé un usuario admin y cargué las 10 habitaciones de
+  prueba, y como Solr se llena por eventos y la búsqueda vacía quedó en la caché de Memcached,
+  aparecieron a los 5 minutos. Y en la cola de aprobaciones aprobé por error una corrida vieja (la
+  del #35, que tenía un comentario de rechazo): PROD recibió una versión verificada pero anterior, y
+  lo corregí aprobando la nueva (#49), que traía todo. Usé Claude Code (Claude Opus 5.5) para el
+  `dependabot.yml`, Sentry en el código, el `/health` con HEAD y este texto; las cuentas, el monitor,
+  el túnel y las aprobaciones los hice yo. Lo verifiqué viendo el error y las operaciones en Sentry,
+  el DOWN y el UP en mis mails, y el PR #49 en verde antes de mergear.
+

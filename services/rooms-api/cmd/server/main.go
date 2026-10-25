@@ -141,11 +141,6 @@ func main() {
 	r.GET("/health", health)
 	r.HEAD("/health", health)
 
-	// TEMPORAL (TP9): un error a propósito para verlo llegar a Sentry. Se saca al terminar.
-	r.GET("/api/falla", func(c *gin.Context) {
-		panic("Falla de prueba del TP9")
-	})
-
 	// API routes
 	api := r.Group("/api/v1")
 	{
