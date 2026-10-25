@@ -115,13 +115,15 @@ func main() {
 		c.Next()
 	})
 
-	// Health check endpoint
-	r.GET("/health", func(c *gin.Context) {
+	// Health check endpoint (también con HEAD: el monitor externo pregunta así)
+	health := func(c *gin.Context) {
 		c.JSON(200, gin.H{
 			"estado":   "saludable",
 			"servicio": "rooms-api",
 		})
-	})
+	}
+	r.GET("/health", health)
+	r.HEAD("/health", health)
 
 	// API routes
 	api := r.Group("/api/v1")
